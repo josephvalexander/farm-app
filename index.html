@@ -274,6 +274,7 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
 
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const APP_VERSION='__VERSION__'; // replaced at deploy time — or just increment manually
 const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
 const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.appdata';
 const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
@@ -1907,5 +1908,48 @@ if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
 </script>
 <script src="https://accounts.google.com/gsi/client" async></script>
+
+<script>
+// ── SERVICE WORKER REGISTRATION ───────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').then(reg=>{
+    // Check for updates every time the page becomes visible
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible') reg.update();
+    });
+    // New SW waiting → show update banner
+    const checkWaiting = (reg) => {
+      if(reg.waiting){
+        showUpdateBanner(reg.waiting);
+      }
+    };
+    reg.addEventListener('updatefound',()=>{
+      const newWorker=reg.installing;
+      newWorker.addEventListener('statechange',()=>{
+        if(newWorker.state==='installed'&&navigator.serviceWorker.controller){
+          showUpdateBanner(newWorker);
+        }
+      });
+    });
+    checkWaiting(reg);
+  }).catch(()=>{});
+
+  // When SW activates new version, reload
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!refreshing){refreshing=true;window.location.reload();}
+  });
+}
+
+function showUpdateBanner(worker){
+  if(document.getElementById('update-banner'))return;
+  const b=document.createElement('div');
+  b.id='update-banner';
+  b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#1565C0;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;font-family:inherit;font-size:13px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,0.2)';
+  b.innerHTML=`<span>🔄 New version available</span><button onclick="this.closest('#update-banner').querySelector('span').textContent='Updating…';window._swWorker.postMessage({type:'SKIP_WAITING'})" style="background:#fff;color:#1565C0;border:none;border-radius:8px;padding:6px 14px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">Update now</button>`;
+  document.body.prepend(b);
+  window._swWorker=worker;
+}
+</script>
 </body>
 </html>
