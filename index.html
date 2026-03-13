@@ -3,117 +3,290 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
-<meta name="theme-color" content="#3B6D11"/>
+<meta name="theme-color" content="#2E7D32"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-title" content="Farm"/>
-<title>Thopramkudy Farm</title>
+<meta name="apple-mobile-web-app-title" content="V-Plantations"/>
+<title>V-Plantations</title>
 <style>
-:root{--gd:#27500A;--gm:#3B6D11;--gl:#639922;--gbg:#EAF3DE;--gbr:#C0DD97;--ad:#854F0B;--abg:#FAEEDA;--abr:#FAC775;--rd:#993C1D;--rbg:#FAECE7;--bd:#185FA5;--bbg:#E6F1FB;--bg:#f5f4f0;--sur:#ffffff;--sur2:#f8f7f4;--bor:rgba(0,0,0,0.1);--bor2:rgba(0,0,0,0.18);--tx:#1a1a18;--tx2:#5f5e5a;--tx3:#888780;--r:12px;--rs:8px}
-@media(prefers-color-scheme:dark){:root{--bg:#1a1c18;--sur:#23261f;--sur2:#2c3027;--bor:rgba(255,255,255,0.1);--bor2:rgba(255,255,255,0.18);--tx:#e8e6de;--tx2:#a8a69e;--tx3:#6e6c66;--gbg:#1a2e0a;--gbr:#2d5010;--abg:#2a1e08;--abr:#5a3a10;--rbg:#2a1008;--bbg:#081828}}
+/* ── LIGHT THEME ── */
+:root{
+  --gd:#1B5E20;--gm:#2E7D32;--gl:#43A047;--glight:#66BB6A;
+  --gbg:#E8F5E9;--gbr:#A5D6A7;
+  --ad:#E65100;--abg:#FFF3E0;--abr:#FFCC80;
+  --rd:#C62828;--rbg:#FFEBEE;--rbr:#EF9A9A;
+  --bd:#1565C0;--bbg:#E3F2FD;--bbr:#90CAF9;
+  --pd:#6A1B9A;--pbg:#F3E5F5;--pbr:#CE93D8;
+  --bg:#F1F8F1;--sur:#FFFFFF;--sur2:#F5FAF5;--sur3:#EDF7ED;
+  --bor:rgba(0,0,0,0.08);--bor2:rgba(0,0,0,0.15);
+  --tx:#1A2E1A;--tx2:#4A5E4A;--tx3:#7A8E7A;
+  --shadow:0 2px 12px rgba(46,125,50,0.08);
+  --shadow2:0 4px 20px rgba(46,125,50,0.12);
+  --r:14px;--rs:10px;
+  --hdr-bg:#FFFFFF;
+  --nav-bg:#FFFFFF;
+  --card-bg:#FFFFFF;
+}
+/* ── DARK THEME ── */
+@media(prefers-color-scheme:dark){:root{
+  --gd:#81C784;--gm:#66BB6A;--gl:#4CAF50;--glight:#A5D6A7;
+  --gbg:#1B3A1C;--gbr:#2E5E30;
+  --ad:#FFB74D;--abg:#2A1800;--abr:#5A3800;
+  --rd:#EF9A9A;--rbg:#2A0A0A;--rbr:#5A1A1A;
+  --bd:#90CAF9;--bbg:#0A1828;--bbr:#1A3858;
+  --pd:#CE93D8;--pbg:#1E0A28;--pbr:#3E1A58;
+  --bg:#0F1A0F;--sur:#162016;--sur2:#1C2A1C;--sur3:#1A2E1A;
+  --bor:rgba(255,255,255,0.08);--bor2:rgba(255,255,255,0.16);
+  --tx:#D4EDD4;--tx2:#9AB89A;--tx3:#5A7A5A;
+  --shadow:0 2px 12px rgba(0,0,0,0.4);
+  --shadow2:0 4px 20px rgba(0,0,0,0.5);
+  --hdr-bg:#162016;
+  --nav-bg:#162016;
+  --card-bg:#1C2A1C;
+}}
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100dvh;max-width:520px;margin:0 auto;display:flex;flex-direction:column}
-.hdr{background:var(--sur);border-bottom:1px solid var(--bor);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
-.hdr h1{font-size:16px;font-weight:600}.hdr p{font-size:11px;color:var(--tx3);margin-top:1px}
-.sync-btn{display:flex;align-items:center;gap:5px;background:var(--gbg);border:1px solid var(--gbr);border-radius:20px;padding:5px 10px;font-size:11px;font-weight:500;color:var(--gd);cursor:pointer;white-space:nowrap}
-.sync-btn svg{width:13px;height:13px;flex-shrink:0}.sync-btn.syncing svg{animation:spin 1s linear infinite}.sync-btn.err{background:var(--rbg);border-color:#f0997b;color:var(--rd)}
+
+/* HEADER */
+.hdr{background:var(--hdr-bg);border-bottom:1px solid var(--bor);padding:13px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20;box-shadow:var(--shadow)}
+.hdr-left{display:flex;align-items:center;gap:10px}
+.hdr-logo{width:32px;height:32px;background:linear-gradient(135deg,var(--gm),var(--gl));border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hdr-logo svg{width:18px;height:18px;stroke:#fff;fill:none}
+.hdr h1{font-size:17px;font-weight:700;color:var(--tx);letter-spacing:-0.3px}
+.hdr p{font-size:11px;color:var(--tx3);margin-top:1px}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.sync-btn{display:flex;align-items:center;gap:5px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:20px;padding:6px 11px;font-size:11px;font-weight:600;color:var(--gm);cursor:pointer;white-space:nowrap;transition:all 0.2s}
+.sync-btn svg{width:13px;height:13px;flex-shrink:0}
+.sync-btn.syncing svg{animation:spin 1s linear infinite}
+.sync-btn.err{background:var(--rbg);border-color:var(--rbr);color:var(--rd)}
+.sync-btn.ok{background:var(--gbg);border-color:var(--gbr);color:var(--gm)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.content{flex:1;padding:12px;padding-bottom:80px}
-.nav{display:flex;border-top:1px solid var(--bor);background:var(--sur);position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:20}
-.nb{flex:1;padding:8px 2px 10px;border:none;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--tx3);font-size:10px;font-family:inherit}.nb.active{color:var(--gm)}.nb svg{width:20px;height:20px}
-.card{background:var(--sur);border-radius:var(--r);border:1px solid var(--bor);padding:14px;margin-bottom:10px}
-.ct{font-size:11px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px}
-.mg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.met{background:var(--sur2);border-radius:var(--rs);padding:10px 12px}.ml{font-size:11px;color:var(--tx3);margin-bottom:3px}.mv{font-size:20px;font-weight:600;line-height:1}.ms{font-size:10px;color:var(--tx3);margin-top:2px}
-.met.g .mv{color:var(--gm)}.met.r .mv{color:var(--rd)}.met.a .mv{color:var(--ad)}
-.row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bor)}.row:last-of-type{border-bottom:none}
-.rt{font-size:13px;font-weight:500}.rs{font-size:11px;color:var(--tx3);margin-top:1px}
-.racts{display:flex;gap:4px;margin-left:8px;flex-shrink:0}
-.ia{background:none;border:1px solid var(--bor2);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;color:var(--tx2)}.ia.e{color:var(--bd)}.ia.d{color:var(--rd)}.ia:active{background:var(--sur2)}
-.badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px;display:inline-block}
-.bl{background:var(--gbg);color:var(--gd)}.bp{background:var(--rbg);color:var(--rd)}.br2{background:var(--abg);color:var(--ad)}.bc2{background:var(--bbg);color:var(--bd)}.bo{background:var(--sur2);color:var(--tx2)}
-.add-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:none;border:1px dashed var(--bor2);border-radius:var(--rs);cursor:pointer;font-size:13px;color:var(--tx2);font-family:inherit;margin-top:10px}.add-btn:active{background:var(--sur2)}
-.br-row{display:flex;align-items:center;gap:8px;margin:4px 0}.br-lbl{font-size:11px;color:var(--tx3);width:62px;flex-shrink:0}.br-trk{flex:1;height:7px;background:var(--sur2);border-radius:4px;overflow:hidden}.br-fill{height:100%;border-radius:4px;background:var(--gl)}.br-val{font-size:11px;color:var(--tx2);width:52px;text-align:right;flex-shrink:0}
-.pbanner{background:var(--gbg);border:1px solid var(--gbr);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
-.tabs{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px}.tabs::-webkit-scrollbar{display:none}
-.tab{flex-shrink:0;padding:6px 12px;border:1px solid var(--bor);border-radius:20px;background:none;font-size:12px;cursor:pointer;color:var(--tx2);font-family:inherit;white-space:nowrap}.tab.active{background:var(--gbg);border-color:var(--gbr);color:var(--gd);font-weight:500}
-.empty{text-align:center;padding:28px 16px;color:var(--tx3);font-size:13px}
-.mo{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100;display:flex;align-items:flex-end;justify-content:center}
-.md{background:var(--sur);border-radius:20px 20px 0 0;padding:20px 16px 36px;width:100%;max-width:520px;max-height:90dvh;overflow-y:auto}
-.mh{width:36px;height:4px;background:var(--bor2);border-radius:2px;margin:0 auto 16px}.mt{font-size:16px;font-weight:600;margin-bottom:16px}
-.fg{margin-bottom:13px}.fl{font-size:12px;color:var(--tx2);margin-bottom:4px;display:block;font-weight:500}
-input[type=text],input[type=number],input[type=date],input[type=month],input[type=password],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--bor2);border-radius:var(--rs);font-size:14px;background:var(--sur);color:var(--tx);font-family:inherit;appearance:none;-webkit-appearance:none}
-input:focus,select:focus{outline:none;border-color:var(--gm)}
-.btn-row{display:flex;gap:8px;margin-top:16px}
-.btnp{flex:1;padding:12px;background:var(--gm);color:#fff;border:none;border-radius:var(--rs);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}.btnp:active{background:var(--gd)}
-.btnc{padding:12px 16px;background:none;border:1px solid var(--bor2);border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:inherit;color:var(--tx)}
-.btnd{padding:12px 16px;background:var(--rbg);border:1px solid #f0997b;border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:inherit;color:var(--rd)}
-.sbox{background:var(--abg);border:1px solid var(--abr);border-radius:var(--r);padding:14px;margin-bottom:10px}
-.sbox h3{font-size:13px;font-weight:600;color:var(--ad);margin-bottom:8px}
+.online-dot{width:7px;height:7px;border-radius:50%;background:#9E9E9E;flex-shrink:0;transition:background 0.3s}
+.online-dot.on{background:var(--gl)}
+
+/* NAV */
+.nav{display:flex;border-top:1px solid var(--bor);background:var(--nav-bg);position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:20;box-shadow:0 -2px 12px rgba(0,0,0,0.06)}
+.nb{flex:1;padding:8px 2px 10px;border:none;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--tx3);font-size:10px;font-family:inherit;transition:color 0.15s}
+.nb.active{color:var(--gm)}
+.nb svg{width:21px;height:21px}
+.nb-dot{width:4px;height:4px;border-radius:50%;background:var(--gm);margin-top:-2px;opacity:0}
+.nb.active .nb-dot{opacity:1}
+
+/* CONTENT */
+.content{flex:1;padding:14px;padding-bottom:84px}
+
+/* CARDS */
+.card{background:var(--card-bg);border-radius:var(--r);border:1px solid var(--bor);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.ct{font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.ct-action{font-size:11px;font-weight:600;color:var(--gm);cursor:pointer;text-transform:none;letter-spacing:0}
+
+/* METRICS */
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.met{background:var(--sur2);border-radius:var(--rs);padding:12px;border:1px solid var(--bor)}
+.ml{font-size:11px;color:var(--tx3);margin-bottom:4px;font-weight:500}
+.mv{font-size:21px;font-weight:700;line-height:1;color:var(--tx)}
+.ms{font-size:10px;color:var(--tx3);margin-top:3px}
+.met.g{background:var(--gbg);border-color:var(--gbr)}.met.g .mv{color:var(--gm)}
+.met.r{background:var(--rbg);border-color:var(--rbr)}.met.r .mv{color:var(--rd)}
+.met.a{background:var(--abg);border-color:var(--abr)}.met.a .mv{color:var(--ad)}
+.met.b{background:var(--bbg);border-color:var(--bbr)}.met.b .mv{color:var(--bd)}
+.met.p{background:var(--pbg);border-color:var(--pbr)}.met.p .mv{color:var(--pd)}
+
+/* ROWS */
+.row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bor)}
+.row:last-of-type{border-bottom:none}
+.rt{font-size:13px;font-weight:600;color:var(--tx)}
+.rs{font-size:11px;color:var(--tx3);margin-top:2px}
+.racts{display:flex;gap:5px;margin-left:8px;flex-shrink:0}
+.ia{background:none;border:1px solid var(--bor2);border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer;font-family:inherit;color:var(--tx2);font-weight:500;transition:all 0.15s}
+.ia.e{color:var(--bd);border-color:var(--bbr);background:var(--bbg)}
+.ia.d{color:var(--rd);border-color:var(--rbr);background:var(--rbg)}
+.ia:active{opacity:0.7}
+
+/* BADGES */
+.badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;display:inline-block}
+.bl{background:var(--gbg);color:var(--gm)}
+.bp{background:var(--rbg);color:var(--rd)}
+.br2{background:var(--abg);color:var(--ad)}
+.bc2{background:var(--bbg);color:var(--bd)}
+.bpu{background:var(--pbg);color:var(--pd)}
+.bo{background:var(--sur2);color:var(--tx2)}
+
+/* ADD BUTTON */
+.add-btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:11px;background:var(--gbg);border:1.5px dashed var(--gbr);border-radius:var(--rs);cursor:pointer;font-size:13px;font-weight:600;color:var(--gm);font-family:inherit;margin-top:12px;transition:all 0.15s}
+.add-btn:active{background:var(--sur3)}
+
+/* BAR CHARTS */
+.br-row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.br-lbl{font-size:11px;color:var(--tx3);width:66px;flex-shrink:0;font-weight:500}
+.br-trk{flex:1;height:8px;background:var(--sur2);border-radius:4px;overflow:hidden;border:1px solid var(--bor)}
+.br-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--gm),var(--gl))}
+.br-val{font-size:11px;color:var(--tx2);width:55px;text-align:right;flex-shrink:0;font-weight:600}
+
+/* PRICE BANNER */
+.pbanner{background:linear-gradient(135deg,var(--gbg),var(--sur3));border:1.5px solid var(--gbr);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.pbanner-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.price-block{position:relative}
+.price-type{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:3px}
+.price-val{font-size:26px;font-weight:800;color:var(--gm);line-height:1;letter-spacing:-0.5px}
+.price-unit{font-size:12px;color:var(--tx3);margin-top:2px}
+.price-fetched{font-size:10px;color:var(--gl);margin-top:2px;display:flex;align-items:center;gap:4px}
+.price-divider{width:1px;background:var(--gbr);align-self:stretch}
+.pbanner-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--gbr)}
+.fetch-btn{display:flex;align-items:center;gap:5px;background:var(--gm);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.fetch-btn svg{width:12px;height:12px}
+.fetch-btn.fetching svg{animation:spin 1s linear infinite}
+.manual-btn{font-size:11px;color:var(--tx3);background:none;border:1px solid var(--bor2);border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit}
+
+/* TABS */
+.tabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}.tabs::-webkit-scrollbar{display:none}
+.tab{flex-shrink:0;padding:7px 13px;border:1.5px solid var(--bor);border-radius:20px;background:none;font-size:12px;font-weight:500;cursor:pointer;color:var(--tx3);font-family:inherit;white-space:nowrap;transition:all 0.15s}
+.tab.active{background:var(--gbg);border-color:var(--gbr);color:var(--gm);font-weight:700}
+
+/* EMPTY STATE */
+.empty{text-align:center;padding:32px 16px;color:var(--tx3);font-size:13px}
+.empty svg{width:40px;height:40px;stroke:var(--tx3);margin-bottom:8px;opacity:0.4}
+
+/* MODAL */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
+.md{background:var(--sur);border-radius:22px 22px 0 0;padding:20px 16px 40px;width:100%;max-width:520px;max-height:92dvh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.2)}
+.mh{width:40px;height:5px;background:var(--bor2);border-radius:3px;margin:0 auto 18px}
+.mt{font-size:17px;font-weight:700;margin-bottom:18px;color:var(--tx)}
+.fg{margin-bottom:14px}
+.fl{font-size:12px;color:var(--tx2);margin-bottom:5px;display:block;font-weight:600}
+input[type=text],input[type=number],input[type=date],input[type=month],input[type=password],select,textarea{width:100%;padding:11px 13px;border:1.5px solid var(--bor2);border-radius:var(--rs);font-size:14px;background:var(--sur);color:var(--tx);font-family:inherit;appearance:none;-webkit-appearance:none;transition:border-color 0.15s}
+input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3px rgba(46,125,50,0.1)}
+.btn-row{display:flex;gap:8px;margin-top:18px}
+.btnp{flex:1;padding:13px;background:linear-gradient(135deg,var(--gm),var(--gl));color:#fff;border:none;border-radius:var(--rs);font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 3px 10px rgba(46,125,50,0.3)}
+.btnp:active{opacity:0.85}
+.btnc{padding:13px 18px;background:none;border:1.5px solid var(--bor2);border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:inherit;color:var(--tx2)}
+.btnd{padding:13px 18px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:inherit;color:var(--rd);font-weight:600}
+
+/* INFO BOX */
+.sbox{background:var(--abg);border:1.5px solid var(--abr);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.sbox h3{font-size:13px;font-weight:700;color:var(--ad);margin-bottom:8px}
 .sbox p,.sbox li{font-size:12px;color:var(--ad);line-height:1.6;margin-bottom:4px}
 .sbox ol{padding-left:16px;margin-bottom:6px}
-.sir{display:flex;gap:6px;margin-top:8px}.sir input{flex:1;font-size:13px}
-.sir button{padding:8px 12px;background:var(--gm);color:#fff;border:none;border-radius:var(--rs);font-size:13px;cursor:pointer;font-family:inherit}
-.cbox{background:var(--rbg);border:1px solid #f0997b;border-radius:var(--rs);padding:12px;margin-bottom:12px}
-.cbox p{font-size:13px;color:var(--rd);line-height:1.5}
-.pk{font-size:10px;background:var(--gbg);color:var(--gm);padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:500}
-.slog{font-size:11px;color:var(--tx3);margin-top:6px;font-style:italic}
+.cbox{background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);padding:14px;margin-bottom:14px}
+.cbox p{font-size:13px;color:var(--rd);line-height:1.5;font-weight:500}
+
+/* MISC */
+.pk{font-size:10px;background:var(--gbg);color:var(--gm);padding:2px 7px;border-radius:8px;margin-left:4px;font-weight:700;border:1px solid var(--gbr)}
+.slog{font-size:11px;color:var(--tx3);margin-top:8px;font-style:italic;text-align:center}
+.section-chip{display:inline-flex;align-items:center;background:var(--sur2);border:1px solid var(--bor);border-radius:20px;padding:2px 8px;font-size:11px;color:var(--tx2);gap:3px}
+.price-source{font-size:10px;color:var(--tx3);margin-top:4px}
 </style>
 </head>
 <body>
 <div class="hdr">
-  <div><h1>Thopramkudy Farm</h1><p>Cardamom Estate · Idukki</p></div>
-  <button class="sync-btn" id="sync-btn" onclick="triggerSync()">
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
-    <span id="sync-label">Sync</span>
-  </button>
+  <div class="hdr-left">
+    <div class="hdr-logo">
+      <svg viewBox="0 0 20 20" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3c0 0-5 3-5 8s5 6 5 6 5-1 5-6-5-8-5-8z"/><path d="M10 3v14M7 7l3 2M13 7l-3 2"/></svg>
+    </div>
+    <div>
+      <h1>V-Plantations</h1>
+      <p>Cardamom Estate · Idukki</p>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="online-dot" id="online-dot" title="Network status"></div>
+    <button class="sync-btn" id="sync-btn" onclick="triggerSync(true)">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
+      <span id="sync-label">Sync</span>
+    </button>
+  </div>
 </div>
 <div class="content" id="main-content"></div>
 <div class="nav">
   <button class="nb active" id="nav-dashboard" onclick="setTab('dashboard')">
     <svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>
-    Dashboard
+    Dashboard<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-sections" onclick="setTab('sections')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5h14M3 10h10M3 15h7"/></svg>
-    Sections
+    Sections<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-yield" onclick="setTab('yield')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5 3 2.5 4-6 3 3"/></svg>
-    Yield
+    Yield<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-expenses" onclick="setTab('expenses')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 9h6M7 12.5h4"/></svg>
-    Expenses
+    Expenses<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-income" onclick="setTab('income')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5v3.5l2.5 1.5"/></svg>
-    Income
+    Income<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-forecast" onclick="setTab('forecast')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5.5 3 2 4-6 3 2.5M15 6h2v2"/></svg>
-    Forecast
+    Forecast<div class="nb-dot"></div>
   </button>
 </div>
 <div id="modal-root"></div>
-<script>
-const DB_KEY='cf_data_v3',CFG_KEY='cf_config_v2';
-let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
-let db={
-  sections:[],seasons:[],yields:[],expenses:[],incomes:[],
-  marketPrice:null,marketPriceDate:null,updatedAt:Date.now()
-};
-let S={tab:'dashboard',expTab:'all',syncing:false,oauthToken:null};
 
-function saveLocal(){db.updatedAt=Date.now();try{localStorage.setItem(DB_KEY,JSON.stringify(db));}catch(e){}}
-function loadLocal(){try{const d=localStorage.getItem(DB_KEY);if(d){const p=JSON.parse(d);db={...db,...p};}const c=localStorage.getItem(CFG_KEY);if(c){cfg={...cfg,...JSON.parse(c)};}}catch(e){}}
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
+const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.appdata';
+const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
+const AUTO_SYNC_INTERVAL=5*60*1000; // 5 minutes
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
+let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],
+  priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+let S={tab:'dashboard',expTab:'all',syncing:false,fetchingPrice:false,oauthToken:null,pendingSync:false};
+
+// ── PERSIST ───────────────────────────────────────────────────────────────────
+function saveLocal(){
+  db.updatedAt=Date.now();
+  try{localStorage.setItem(DB_KEY,JSON.stringify(db));}catch(e){}
+}
+function loadLocal(){
+  try{
+    const d=localStorage.getItem(DB_KEY);
+    if(d){const p=JSON.parse(d);
+      // migrate old schema: marketPrice → priceDried
+      if(p.marketPrice&&!p.priceDried){p.priceDried=p.marketPrice;p.priceDate=p.marketPriceDate||null;delete p.marketPrice;delete p.marketPriceDate;}
+      db={...db,...p};
+    }
+    const c=localStorage.getItem(CFG_KEY);
+    if(c)cfg={...cfg,...JSON.parse(c)};
+    // migrate old config key
+    const oldCfg=localStorage.getItem('cf_config_v2');
+    if(oldCfg&&!cfg.passphrase){const o=JSON.parse(oldCfg);cfg={...cfg,...o};saveCfg();}
+    // migrate old db key
+    const oldDb=localStorage.getItem('cf_data_v3');
+    if(oldDb&&!db.sections.length){
+      const o=JSON.parse(oldDb);
+      db={...db,sections:o.sections||[],seasons:o.seasons||[],yields:o.yields||[],expenses:o.expenses||[],incomes:o.incomes||[],priceDried:o.marketPrice||null,priceDate:o.marketPriceDate||null};
+      saveLocal();
+    }
+  }catch(e){}
+}
 function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}}
 loadLocal();
 
-async function getKey(pp,salt){const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pp),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
-async function encrypt(data,pp){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await getKey(pp,salt),ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(data))),buf=new Uint8Array(28+ct.byteLength);buf.set(salt);buf.set(iv,16);buf.set(new Uint8Array(ct),28);return btoa(String.fromCharCode(...buf));}
-async function decrypt(b64,pp){const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),key=await getKey(pp,raw.slice(0,16)),pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(16,28)},key,raw.slice(28));return JSON.parse(new TextDecoder().decode(pt));}
+// ── CRYPTO ────────────────────────────────────────────────────────────────────
+async function getKey(pp,salt){
+  const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pp),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encrypt(data,pp){
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await getKey(pp,salt);
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(data)));
+  const buf=new Uint8Array(28+ct.byteLength);buf.set(salt);buf.set(iv,16);buf.set(new Uint8Array(ct),28);
+  return btoa(String.fromCharCode(...buf));
+}
+async function decrypt(b64,pp){
+  const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),key=await getKey(pp,raw.slice(0,16));
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(16,28)},key,raw.slice(28));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
 
-const DRIVE_FILE='cardamom_farm_data.enc',SCOPES='https://www.googleapis.com/auth/drive.appdata',CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
+// ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 function getClientId(){return cfg.clientId||CID_PH;}
 async function getOAuthToken(){
   if(S.oauthToken)return S.oauthToken;
@@ -122,33 +295,177 @@ async function getOAuthToken(){
     google.accounts.oauth2.initTokenClient({client_id:getClientId(),scope:SCOPES,callback:(r)=>{if(r.error)rej(new Error(r.error));else{S.oauthToken=r.access_token;res(r.access_token);}}}).requestAccessToken();
   });
 }
-async function driveFetch(path,opts={}){const tok=await getOAuthToken();return fetch('https://www.googleapis.com/'+path,{...opts,headers:{Authorization:'Bearer '+tok,...(opts.headers||{})}});}
+async function driveFetch(path,opts={}){
+  const tok=await getOAuthToken();
+  return fetch('https://www.googleapis.com/'+path,{...opts,headers:{Authorization:'Bearer '+tok,...(opts.headers||{})}});
+}
 async function findFile(){const r=await driveFetch(`drive/v3/files?spaces=appDataFolder&q=name%3D'${DRIVE_FILE}'&fields=files(id)`);const d=await r.json();return d.files?.[0]||null;}
 async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media`)).text();}
-async function writeFile(id,content){const meta={name:DRIVE_FILE,parents:id?undefined:['appDataFolder']};const form=new FormData();form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));form.append('file',new Blob([content],{type:'text/plain'}));return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();}
+async function writeFile(id,content){
+  const meta={name:DRIVE_FILE,parents:id?undefined:['appDataFolder']};
+  const form=new FormData();
+  form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+  form.append('file',new Blob([content],{type:'text/plain'}));
+  return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
+}
 
-async function triggerSync(){
+// ── SYNC ──────────────────────────────────────────────────────────────────────
+async function triggerSync(manual=false){
   if(S.syncing)return;
-  if(!cfg.passphrase){showPassphraseSetup();return;}
-  if(!getClientId()||getClientId()===CID_PH){showClientIdSetup();return;}
-  S.syncing=true;setSyncUI('syncing','Syncing…');
+  if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
+  if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
+  if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
+  S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
   try{
     await getOAuthToken();
     const file=await findFile();
-    if(!file){const enc=await encrypt(db,cfg.passphrase);const res=await writeFile(null,enc);cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();setSyncUI('ok','Synced ✓');}
-    else{const raw=await readFile(file.id);let cloud;try{cloud=await decrypt(raw,cfg.passphrase);}catch(e){setSyncUI('err','Wrong passphrase');S.syncing=false;return;}db=mergeDb(db,cloud);saveLocal();const enc=await encrypt(db,cfg.passphrase);await writeFile(file.id,enc);cfg.lastSyncTs=Date.now();saveCfg();setSyncUI('ok','Synced ✓');render();}
+    if(!file){
+      const enc=await encrypt(db,cfg.passphrase);
+      const res=await writeFile(null,enc);
+      cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
+      setSyncUI('ok','Synced ✓');
+    } else {
+      const raw=await readFile(file.id);
+      let cloud;
+      try{cloud=await decrypt(raw,cfg.passphrase);}
+      catch(e){setSyncUI('err','Wrong passphrase');S.syncing=false;return;}
+      db=mergeDb(db,cloud);saveLocal();
+      const enc=await encrypt(db,cfg.passphrase);
+      await writeFile(file.id,enc);
+      cfg.lastSyncTs=Date.now();saveCfg();
+      setSyncUI('ok','Synced ✓');
+      render();
+    }
   }catch(e){console.error(e);setSyncUI('err','Failed — retry');}
-  S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),3000);
+  S.syncing=false;
+  setTimeout(()=>setSyncUI('idle','Sync'),3000);
 }
-function mergeDb(local,cloud){
-  function ml(a,b){const m={};for(const x of a)m[x.id]=x;for(const x of b)if(!m[x.id]||(x.createdAt||0)>(m[x.id].createdAt||0))m[x.id]=x;return Object.values(m).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));}
-  return{sections:ml(local.sections,cloud.sections||[]),seasons:ml(local.seasons||[],cloud.seasons||[]),yields:ml(local.yields,cloud.yields),expenses:ml(local.expenses,cloud.expenses),incomes:ml(local.incomes,cloud.incomes),marketPrice:cloud.updatedAt>local.updatedAt?cloud.marketPrice:local.marketPrice,marketPriceDate:cloud.updatedAt>local.updatedAt?cloud.marketPriceDate:local.marketPriceDate,updatedAt:Math.max(local.updatedAt||0,cloud.updatedAt||0)};
-}
-function setSyncUI(state,label){const btn=document.getElementById('sync-btn'),lbl=document.getElementById('sync-label');if(!btn)return;btn.className='sync-btn'+(state==='syncing'?' syncing':state==='err'?' err':'');lbl.textContent=label;}
 
+function mergeDb(local,cloud){
+  // Use deletedIds to properly sync deletions
+  const delIds=new Set([...(local.deletedIds||[]),...(cloud.deletedIds||[])]);
+  function ml(a,b){
+    const m={};
+    for(const x of [...(a||[]),...(b||[])])
+      if(!m[x.id]||(x.updatedAt||x.createdAt||0)>(m[x.id].updatedAt||m[x.id].createdAt||0))m[x.id]=x;
+    // remove deleted items
+    for(const id of delIds)delete m[id];
+    return Object.values(m).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  }
+  const newer=cloud.updatedAt>local.updatedAt;
+  return{
+    sections:ml(local.sections,cloud.sections),
+    seasons:ml(local.seasons||[],cloud.seasons||[]),
+    yields:ml(local.yields,cloud.yields),
+    expenses:ml(local.expenses,cloud.expenses),
+    incomes:ml(local.incomes,cloud.incomes),
+    priceRaw:newer?cloud.priceRaw:local.priceRaw,
+    priceDried:newer?cloud.priceDried:local.priceDried,
+    priceDate:newer?cloud.priceDate:local.priceDate,
+    priceSource:newer?cloud.priceSource:local.priceSource,
+    deletedIds:[...delIds],
+    updatedAt:Math.max(local.updatedAt||0,cloud.updatedAt||0)
+  };
+}
+
+function setSyncUI(state,label){
+  const btn=document.getElementById('sync-btn'),lbl=document.getElementById('sync-label');
+  if(!btn)return;
+  btn.className='sync-btn'+(state==='syncing'?' syncing':state==='err'?' err':state==='ok'?' ok':'');
+  lbl.textContent=label;
+}
+
+// ── AUTO-SYNC & NETWORK ───────────────────────────────────────────────────────
+function updateOnlineDot(){
+  const dot=document.getElementById('online-dot');
+  if(dot)dot.className='online-dot'+(navigator.onLine?' on':'');
+}
+window.addEventListener('online',()=>{
+  updateOnlineDot();
+  if(S.pendingSync)triggerSync(false);
+});
+window.addEventListener('offline',updateOnlineDot);
+
+// Auto-sync on open
+window.addEventListener('load',()=>{
+  updateOnlineDot();
+  setTimeout(()=>triggerSync(false),1500);
+});
+
+// Auto-sync every 5 mins
+setInterval(()=>{if(!document.hidden)triggerSync(false);},AUTO_SYNC_INTERVAL);
+
+// Auto-sync when tab becomes visible
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)triggerSync(false);
+});
+
+// ── PRICE FETCHING ────────────────────────────────────────────────────────────
+// Note: Direct price scraping is blocked by CORS. We use a proxy approach via
+// allorigins.win to fetch Spices Board data, or fall back to manual entry.
+async function fetchLivePrice(){
+  if(S.fetchingPrice)return;
+  S.fetchingPrice=true;
+  const btn=document.getElementById('fetch-btn');
+  if(btn){btn.classList.add('fetching');btn.querySelector('span').textContent='Fetching…';}
+  try{
+    // Try Spices Board price page via allorigins proxy
+    const url='https://api.allorigins.win/get?url='+encodeURIComponent('https://www.indianspices.com/marketing/price/domestic/daily-price.html');
+    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    const json=await r.json();
+    const html=json.contents||'';
+    // Parse cardamom prices from page
+    // The page lists "Small Cardamom" with raw/dried prices
+    let raw=null,dried=null,dateStr=null;
+    // Look for price patterns near "Cardamom"
+    const lines=html.replace(/<[^>]+>/g,' ').split('\n').map(l=>l.trim()).filter(Boolean);
+    for(let i=0;i<lines.length;i++){
+      if(/cardamom/i.test(lines[i])){
+        // Look for numbers in surrounding lines
+        for(let j=i;j<Math.min(i+10,lines.length);j++){
+          const nums=lines[j].match(/\d{3,5}/g);
+          if(nums&&nums.length>=2&&!raw){
+            const v1=parseInt(nums[0]),v2=parseInt(nums[1]);
+            if(v1>500&&v1<20000)raw=v1;
+            if(v2>500&&v2<20000)dried=v2;
+          }
+        }
+        break;
+      }
+    }
+    // Try to find date
+    const dateMatch=html.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
+    if(dateMatch)dateStr=dateMatch[1];
+    if(raw||dried){
+      if(raw)db.priceRaw=raw;
+      if(dried)db.priceDried=dried;
+      db.priceDate=dateStr||new Date().toLocaleDateString('en-IN');
+      db.priceSource='Spices Board (auto)';
+      saveLocal();triggerSync(false);render();
+      showToast('Prices updated from Spices Board');
+    } else {
+      showToast('Could not parse prices — please update manually');
+    }
+  }catch(e){
+    console.warn('Price fetch failed:',e);
+    showToast('Auto-fetch failed — please update manually');
+  }
+  S.fetchingPrice=false;
+  const btn2=document.getElementById('fetch-btn');
+  if(btn2){btn2.classList.remove('fetching');btn2.querySelector('span').textContent='Fetch prices';}
+}
+
+function showToast(msg){
+  let t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--sur);border:1px solid var(--bor2);color:var(--tx);padding:10px 18px;border-radius:20px;font-size:13px;font-weight:500;z-index:200;box-shadow:var(--shadow2);max-width:300px;text-align:center;';document.body.appendChild(t);}
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',3000);
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
 const uid=()=>'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const fc=n=>'₹'+Math.round(n).toLocaleString('en-IN');
-const fd=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'});};
+const fd=s=>{if(!s)return'';const d=new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'});};
 const totalPlants=()=>db.sections.reduce((s,x)=>s+(x.plants||0),0);
 const totalYield=()=>db.yields.reduce((s,x)=>s+(x.qty||0),0);
 const totalExp=()=>db.expenses.reduce((s,x)=>s+(x.amount||0),0);
@@ -158,174 +475,331 @@ const CL={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw material',crop:'Crop',
 const BC={labor:'bl',pesticide:'bp',rawmat:'br2',crop:'bc2',other:'bo'};
 const secName=id=>{const s=db.sections.find(x=>x.id===id);return s?s.name:'All sections';};
 const seaName=id=>{if(!id)return'';const s=(db.seasons||[]).find(x=>x.id===id);return s?s.name:'';};
-const secOpts=(blank='All sections')=>`<option value="">${blank}</option>`+db.sections.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-const seaOpts=(blank='No season')=>`<option value="">${blank}</option>`+(db.seasons||[]).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-const esc=s=>(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+const secOpts=(blank='All sections')=>`<option value="">${blank}</option>`+db.sections.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+const seaOpts=(blank='No season')=>`<option value="">${blank}</option>`+(db.seasons||[]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,"&#39;").replace(/"/g,'&quot;');
 
+// ── DELETE WITH TRACKING ──────────────────────────────────────────────────────
+function deleteItem(type,id){
+  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes'};
+  const key=map[type];if(!key)return;
+  db[key]=db[key].filter(x=>x.id!==id);
+  if(!db.deletedIds)db.deletedIds=[];
+  if(!db.deletedIds.includes(id))db.deletedIds.push(id);
+  saveLocal();
+  // Auto-sync after delete
+  setTimeout(()=>triggerSync(false),500);
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard(){
   const inc=totalInc(),exp=totalExp(),profit=inc-exp,plants=totalPlants(),ykg=totalYield();
   const byCat={};db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const maxE=Math.max(...Object.values(byCat),1);
   const bClr={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx3)'};
   const recent=[...db.yields.slice(-3).map(y=>({t:'y',y,ts:y.createdAt})),...db.incomes.slice(-2).map(i=>({t:'i',i,ts:i.createdAt}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
-  return`${db.marketPrice?`<div class="pbanner"><div><div style="font-size:11px;font-weight:600;color:var(--gm);margin-bottom:2px">Vandanmedu / Kumily auction</div><div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:22px;font-weight:700;color:var(--gd)">₹${db.marketPrice}</span><span style="font-size:12px;color:var(--gm)">/kg</span></div><div style="font-size:11px;color:var(--gm)">${db.marketPriceDate||''}</div></div><button onclick="showEditPrice()" style="background:var(--gm);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:inherit">Update</button></div>`:`<div class="pbanner" style="cursor:pointer" onclick="showEditPrice()"><div style="font-size:13px;font-weight:500;color:var(--gm)">Tap to enter market price</div></div>`}
-<div class="card"><div class="ct">Farm overview</div><div class="mg">
-<div class="met"><div class="ml">Total plants</div><div class="mv">${plants.toLocaleString('en-IN')}</div><div class="ms">${db.sections.length} sections</div></div>
-<div class="met"><div class="ml">Total yield</div><div class="mv">${ykg} kg</div><div class="ms">${db.yields.length} entries</div></div>
-<div class="met g"><div class="ml">Total income</div><div class="mv">${fc(inc)}</div><div class="ms">${db.incomes.length} sales</div></div>
-<div class="met ${profit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv">${fc(profit)}</div><div class="ms">after expenses</div></div>
-</div></div>
-${Object.keys(byCat).length?`<div class="card"><div class="ct">Expense breakdown</div>${Object.entries(byCat).map(([cat,amt])=>`<div class="br-row"><div class="br-lbl">${CL[cat]||cat}</div><div class="br-trk"><div class="br-fill" style="width:${Math.round(amt/maxE*100)}%;background:${bClr[cat]||'var(--tx3)'}"></div></div><div class="br-val">${fc(amt)}</div></div>`).join('')}</div>`:''}
-${recent.length?`<div class="card"><div class="ct">Recent activity</div>${recent.map(a=>a.t==='y'?`<div class="row"><div><div class="rt">Yield — ${secName(a.y.sectionId)}</div><div class="rs">${a.y.date}${a.y.seasonId?' · '+seaName(a.y.seasonId):''}</div></div><div style="color:var(--gm);font-weight:600;margin-left:8px">${a.y.qty} kg</div></div>`:`<div class="row"><div><div class="rt">Sale — ${a.i.buyer||'—'}</div><div class="rs">${fd(a.i.date)} · ${a.i.qty}kg @ ₹${a.i.pricePerKg}</div></div><div style="color:var(--gm);font-weight:600;margin-left:8px">${fc(a.i.qty*a.i.pricePerKg)}</div></div>`).join('')}</div>`:''}
-${!cfg.passphrase?`<div class="sbox"><h3>Set up sync</h3><p>Tap Sync at the top to configure encrypted Google Drive backup.</p></div>`:cfg.lastSyncTs?`<p class="slog">Last synced: ${new Date(cfg.lastSyncTs).toLocaleString('en-IN')}</p>`:''}`;
+  const hasPrice=db.priceRaw||db.priceDried;
+  return`
+<div class="pbanner">
+  <div class="ct" style="margin-bottom:10px">Market prices — Cardamom
+    <span class="ct-action" onclick="showEditPrice()">Edit manually</span>
+  </div>
+  <div class="pbanner-grid">
+    <div class="price-block">
+      <div class="price-type">🌿 Raw / Green</div>
+      <div class="price-val">${db.priceRaw?'₹'+db.priceRaw.toLocaleString('en-IN'):'—'}</div>
+      <div class="price-unit">per kg</div>
+    </div>
+    <div class="price-block">
+      <div class="price-type">☀️ Dried</div>
+      <div class="price-val">${db.priceDried?'₹'+db.priceDried.toLocaleString('en-IN'):'—'}</div>
+      <div class="price-unit">per kg</div>
+    </div>
+  </div>
+  ${hasPrice?`<div class="price-source">${db.priceSource||''} · ${db.priceDate||''}</div>`:''}
+  <div class="pbanner-footer">
+    <span style="font-size:11px;color:var(--tx3)">Vandanmedu / Kumily · ~25-30km</span>
+    <div style="display:flex;gap:6px">
+      <button class="manual-btn" onclick="showEditPrice()">Manual</button>
+      <button class="fetch-btn" id="fetch-btn" onclick="fetchLivePrice()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
+        <span>Fetch prices</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="ct">Farm overview</div>
+  <div class="mg">
+    <div class="met"><div class="ml">Total plants</div><div class="mv">${plants.toLocaleString('en-IN')}</div><div class="ms">${db.sections.length} sections</div></div>
+    <div class="met"><div class="ml">Total yield</div><div class="mv">${ykg} kg</div><div class="ms">${db.yields.length} entries</div></div>
+    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(inc)}</div><div class="ms">${db.incomes.length} sales</div></div>
+    <div class="met ${profit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv">${fc(profit)}</div><div class="ms">after expenses</div></div>
+  </div>
+</div>
+
+${Object.keys(byCat).length?`
+<div class="card">
+  <div class="ct">Expense breakdown</div>
+  ${Object.entries(byCat).map(([cat,amt])=>`
+  <div class="br-row">
+    <div class="br-lbl">${CL[cat]||cat}</div>
+    <div class="br-trk"><div class="br-fill" style="background:linear-gradient(90deg,${bClr[cat]},${bClr[cat]}99);width:${Math.round(amt/maxE*100)}%"></div></div>
+    <div class="br-val">${fc(amt)}</div>
+  </div>`).join('')}
+</div>`:''}
+
+${recent.length?`
+<div class="card">
+  <div class="ct">Recent activity</div>
+  ${recent.map(a=>a.t==='y'
+    ?`<div class="row"><div><div class="rt">Yield — ${secName(a.y.sectionId)}</div><div class="rs">${a.y.date}${a.y.seasonId?' · '+seaName(a.y.seasonId):''}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${a.y.qty} kg</div></div>`
+    :`<div class="row"><div><div class="rt">Sale — ${esc(a.i.buyer||'—')}</div><div class="rs">${fd(a.i.date)} · ${a.i.qty}kg @ ₹${a.i.pricePerKg}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${fc(a.i.qty*a.i.pricePerKg)}</div></div>`
+  ).join('')}
+</div>`:''}
+
+${!cfg.passphrase?`<div class="sbox"><h3>⚙️ Set up sync</h3><p>Tap Sync to configure encrypted Google Drive backup.</p></div>`:
+cfg.lastSyncTs?`<p class="slog">Last synced ${new Date(cfg.lastSyncTs).toLocaleString('en-IN')}</p>`:''}`;
 }
 
+// ── SECTIONS ──────────────────────────────────────────────────────────────────
 function renderSections(){
-  return`<div class="card"><div class="ct">Plant sections</div>
-${db.sections.length===0?'<div class="empty">No sections yet</div>':db.sections.map(s=>`
-<div class="row">
-  <div style="flex:1;min-width:0"><div class="rt">${s.name}</div><div class="rs">${s.plants} plants · Age ${s.age}yr${s.notes?' · '+s.notes:''}</div></div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
-    <div style="text-align:right"><div style="font-size:14px;font-weight:600;color:var(--gm)">${yieldForSec(s.id)} kg</div><div style="font-size:10px;color:var(--tx3)">yield</div></div>
-    <div class="racts"><button class="ia e" onclick="showEditSection('${s.id}')">Edit</button><button class="ia d" onclick="confirmDel('section','${s.id}','${esc(s.name)}')">Del</button></div>
-  </div>
-</div>`).join('')}
-<button class="add-btn" onclick="showEditSection(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>Add section</button>
+  return`
+<div class="card">
+  <div class="ct">Plant sections</div>
+  ${db.sections.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><path stroke-linecap="round" d="M3 5h14M3 10h10M3 15h7"/></svg><br>No sections yet</div>`:
+  db.sections.map(s=>`
+  <div class="row">
+    <div style="flex:1;min-width:0">
+      <div class="rt">${esc(s.name)}</div>
+      <div class="rs">${s.plants} plants · Age ${s.age}yr${s.notes?' · '+esc(s.notes):''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700;color:var(--gm)">${yieldForSec(s.id)} kg</div>
+        <div style="font-size:10px;color:var(--tx3)">yield</div>
+      </div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditSection('${s.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('section','${s.id}','${esc(s.name)}')">Del</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <button class="add-btn" onclick="showEditSection(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add section</button>
 </div>
-<div class="card"><div class="ct">Summary</div><div class="mg">
-<div class="met"><div class="ml">Sections</div><div class="mv">${db.sections.length}</div></div>
-<div class="met"><div class="ml">Total plants</div><div class="mv">${totalPlants().toLocaleString('en-IN')}</div></div>
-<div class="met g"><div class="ml">Avg yield/plant</div><div class="mv">${totalPlants()>0?(totalYield()/totalPlants()).toFixed(2):0} kg</div></div>
-<div class="met a"><div class="ml">Best section</div><div class="mv" style="font-size:13px">${[...db.sections].sort((a,b)=>yieldForSec(b.id)-yieldForSec(a.id))[0]?.name||'—'}</div></div>
-</div></div>
-<div class="card"><div class="ct">Seasons</div>
-${(db.seasons||[]).length===0?'<div class="empty">No seasons yet</div>':(db.seasons||[]).map(s=>`
-<div class="row">
-  <div style="flex:1;min-width:0"><div class="rt">${s.name}</div><div class="rs">${s.start||''}${s.end?' → '+s.end:''}${s.notes?' · '+s.notes:''}</div></div>
-  <div class="racts"><button class="ia e" onclick="showEditSeason('${s.id}')">Edit</button><button class="ia d" onclick="confirmDel('season','${s.id}','${esc(s.name)}')">Del</button></div>
-</div>`).join('')}
-<button class="add-btn" onclick="showEditSeason(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>Add season</button>
+
+<div class="card">
+  <div class="ct">Summary</div>
+  <div class="mg">
+    <div class="met b"><div class="ml">Sections</div><div class="mv">${db.sections.length}</div></div>
+    <div class="met"><div class="ml">Total plants</div><div class="mv">${totalPlants().toLocaleString('en-IN')}</div></div>
+    <div class="met g"><div class="ml">Avg yield/plant</div><div class="mv">${totalPlants()>0?(totalYield()/totalPlants()).toFixed(2):0} kg</div></div>
+    <div class="met a"><div class="ml">Best section</div><div class="mv" style="font-size:13px">${[...db.sections].sort((a,b)=>yieldForSec(b.id)-yieldForSec(a.id))[0]?.name||'—'}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="ct">Seasons</div>
+  ${(db.seasons||[]).length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><path stroke-linecap="round" d="M10 2v16M4 6l6 4 6-4M4 14l6-4 6 4"/></svg><br>No seasons yet</div>`:
+  (db.seasons||[]).map(s=>`
+  <div class="row">
+    <div style="flex:1;min-width:0">
+      <div class="rt">${esc(s.name)}</div>
+      <div class="rs">${s.start||''}${s.end?' → '+s.end:''}${s.notes?' · '+esc(s.notes):''}</div>
+    </div>
+    <div class="racts">
+      <button class="ia e" onclick="showEditSeason('${s.id}')">Edit</button>
+      <button class="ia d" onclick="confirmDel('season','${s.id}','${esc(s.name)}')">Del</button>
+    </div>
+  </div>`).join('')}
+  <button class="add-btn" onclick="showEditSeason(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add season</button>
 </div>`;
 }
 
+// ── YIELD ─────────────────────────────────────────────────────────────────────
 function renderYield(){
   const byMonth={};db.yields.forEach(y=>byMonth[y.date]=(byMonth[y.date]||0)+y.qty);
   const months=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0]));
   const maxY=Math.max(...Object.values(byMonth),1);
-  return`<div class="card"><div class="ct">Monthly yield</div>
-${months.length===0?'<div class="empty">No records yet</div>':months.map(([m,q])=>`<div class="br-row"><div class="br-lbl">${m}</div><div class="br-trk"><div class="br-fill" style="width:${Math.round(q/maxY*100)}%"></div></div><div class="br-val">${q} kg</div></div>`).join('')}
-<button class="add-btn" onclick="showEditYield(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
+  return`
+<div class="card">
+  <div class="ct">Monthly yield</div>
+  ${months.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15l4-5 3 2.5 4-6 3 3"/></svg><br>No records yet</div>`:
+  months.map(([m,q])=>`
+  <div class="br-row">
+    <div class="br-lbl">${m}</div>
+    <div class="br-trk"><div class="br-fill" style="width:${Math.round(q/maxY*100)}%"></div></div>
+    <div class="br-val">${q} kg</div>
+  </div>`).join('')}
+  <button class="add-btn" onclick="showEditYield(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
 </div>
-<div class="card"><div class="ct">All records</div>
-${db.yields.length===0?'<div class="empty">No records</div>':[...db.yields].reverse().map(y=>`
-<div class="row">
-  <div style="flex:1;min-width:0"><div class="rt">${secName(y.sectionId)}</div><div class="rs">${y.date}${y.seasonId?' · '+seaName(y.seasonId):''}</div></div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
-    <div style="color:var(--gm);font-weight:600;font-size:14px">${y.qty} kg</div>
-    <div class="racts"><button class="ia e" onclick="showEditYield('${y.id}')">Edit</button><button class="ia d" onclick="confirmDel('yield','${y.id}','${y.qty}kg on ${y.date}')">Del</button></div>
-  </div>
-</div>`).join('')}
+<div class="card">
+  <div class="ct">All records</div>
+  ${db.yields.length===0?'<div class="empty">No records</div>':[...db.yields].reverse().map(y=>`
+  <div class="row">
+    <div style="flex:1;min-width:0">
+      <div class="rt">${secName(y.sectionId)}</div>
+      <div class="rs">${y.date}${y.seasonId?' · '+seaName(y.seasonId):''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
+      <div style="color:var(--gm);font-weight:700;font-size:15px">${y.qty} kg</div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditYield('${y.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('yield','${y.id}','${y.qty}kg on ${y.date}')">Del</button>
+      </div>
+    </div>
+  </div>`).join('')}
 </div>`;
 }
 
+// ── EXPENSES ──────────────────────────────────────────────────────────────────
 function renderExpenses(){
   const t=S.expTab,filtered=t==='all'?db.expenses:db.expenses.filter(e=>e.category===t);
   const total=filtered.reduce((s,e)=>s+e.amount,0);
-  return`<div class="card"><div class="ct">Expenses</div>
-<div class="tabs">${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button class="tab ${t===c?'active':''}" onclick="S.expTab='${c}';render()">${c==='all'?'All':CL[c]}</button>`).join('')}</div>
-<div style="font-size:12px;color:var(--tx2);margin-bottom:8px">Total: <strong>${fc(total)}</strong></div>
-${filtered.length===0?'<div class="empty">No expenses here</div>':[...filtered].reverse().map(e=>`
-<div class="row">
-  <div style="flex:1;min-width:0">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap"><span class="badge ${BC[e.category]||'bo'}">${CL[e.category]||e.category}</span><span class="rt">${e.desc}</span></div>
-    <div class="rs">${fd(e.date)}${e.sectionId?' · '+secName(e.sectionId):''}${e.seasonId?' · '+seaName(e.seasonId):''}</div>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
-    <div style="font-size:14px;font-weight:600">${fc(e.amount)}</div>
-    <div class="racts"><button class="ia e" onclick="showEditExpense('${e.id}')">Edit</button><button class="ia d" onclick="confirmDel('expense','${e.id}','${esc(e.desc)}')">Del</button></div>
-  </div>
-</div>`).join('')}
-<button class="add-btn" onclick="showEditExpense(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
+  return`
+<div class="card">
+  <div class="ct">Expenses</div>
+  <div class="tabs">${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button class="tab ${t===c?'active':''}" onclick="S.expTab='${c}';render()">${c==='all'?'All':CL[c]}</button>`).join('')}</div>
+  <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;font-weight:600">Total: ${fc(total)}</div>
+  ${filtered.length===0?'<div class="empty">No expenses here</div>':[...filtered].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`
+  <div class="row">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+        <span class="badge ${BC[e.category]||'bo'}">${CL[e.category]||e.category}</span>
+        <span class="rt">${esc(e.desc)}</span>
+      </div>
+      <div class="rs">${fd(e.date)}${e.sectionId?' · '+secName(e.sectionId):''}${e.seasonId?' · '+seaName(e.seasonId):''}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
+      <div style="font-size:14px;font-weight:700">${fc(e.amount)}</div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditExpense('${e.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('expense','${e.id}','${esc(e.desc)}')">Del</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <button class="add-btn" onclick="showEditExpense(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
 </div>`;
 }
 
+// ── INCOME ────────────────────────────────────────────────────────────────────
 function renderIncome(){
   const total=totalInc(),kg=db.incomes.reduce((s,i)=>s+i.qty,0),avg=kg>0?Math.round(total/kg):0;
-  return`<div class="card"><div class="ct">Income summary</div><div class="mg">
-<div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div></div>
-<div class="met"><div class="ml">Kg sold</div><div class="mv">${kg} kg</div></div>
-<div class="met a"><div class="ml">Avg sell price</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div><div class="ms">per kg</div></div>
-<div class="met"><div class="ml">Market price</div><div class="mv" style="font-size:15px">₹${db.marketPrice||'—'}</div></div>
-</div></div>
-<div class="card"><div class="ct">Income records</div>
-${db.incomes.length===0?'<div class="empty">No income recorded</div>':[...db.incomes].reverse().map(i=>`
-<div class="row">
-  <div style="flex:1;min-width:0">
-    <div class="rt">${i.buyer||'—'}</div>
-    <div class="rs">${fd(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}/kg${i.seasonId?' · '+seaName(i.seasonId):''}</div>
-    ${i.notes?`<div style="font-size:11px;color:var(--tx3)">${i.notes}</div>`:''}
+  return`
+<div class="card">
+  <div class="ct">Income summary</div>
+  <div class="mg">
+    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div></div>
+    <div class="met b"><div class="ml">Kg sold</div><div class="mv">${kg} kg</div></div>
+    <div class="met a"><div class="ml">Avg sell price</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div><div class="ms">per kg</div></div>
+    <div class="met p"><div class="ml">Net profit</div><div class="mv" style="font-size:15px">${fc(total-totalExp())}</div></div>
   </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
-    <div style="color:var(--gm);font-weight:600;font-size:14px">${fc(i.qty*i.pricePerKg)}</div>
-    <div class="racts"><button class="ia e" onclick="showEditIncome('${i.id}')">Edit</button><button class="ia d" onclick="confirmDel('income','${i.id}','sale ${fd(i.date)}')">Del</button></div>
-  </div>
-</div>`).join('')}
-<button class="add-btn" onclick="showEditIncome(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
-</div>`;
-}
-
-function renderForecast(){
-  const mp=db.marketPrice||2450,plants=totalPlants(),ypp=plants>0?totalYield()/plants:0.45,mexp=db.expenses.length>0?totalExp()/12:3000;
-  const now=new Date();
-  const rows=Array.from({length:8},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()+i+1,1),mo=d.getMonth()+1,isPeak=[7,8,9,10].includes(mo),pY=Math.round(plants*(ypp||0.45)*(isPeak?1.5:0.55)/12),pI=pY*mp,pE=Math.round(mexp*(isPeak?1.3:0.8));return{label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),pY,pI,pE,pP:pI-pE,isPeak};});
-  return`<div class="card"><div class="ct">Basis</div><div class="mg">
-<div class="met"><div class="ml">Plants</div><div class="mv">${plants}</div></div>
-<div class="met"><div class="ml">Price used</div><div class="mv" style="font-size:15px">₹${mp}/kg</div></div>
-<div class="met"><div class="ml">Yield/plant/yr</div><div class="mv">${(ypp||0.45).toFixed(2)} kg</div></div>
-<div class="met a"><div class="ml">Peak months</div><div class="mv" style="font-size:13px">Jul–Oct</div></div>
-</div></div>
-<div class="card"><div class="ct">8-month forecast</div>
-${rows.map(r=>`<div class="row"><div><div class="rt">${r.label}${r.isPeak?'<span class="pk">Peak</span>':''}</div><div class="rs">~${r.pY}kg · exp ${fc(r.pE)}</div></div><div style="font-size:14px;font-weight:600;color:${r.pP>=0?'var(--gm)':'var(--rd)'};margin-left:8px">${fc(r.pP)}</div></div>`).join('')}
 </div>
-<div class="card"><div class="ct">Auction centers</div>
-<div class="row"><div><div class="rt">Vandanmedu — MAS Enterprises</div><div class="rs">~25km · Fridays</div></div></div>
-<div class="row"><div><div class="rt">Kumily auction center</div><div class="rs">~30km · Daily</div></div></div>
-<a href="https://www.indianspices.com/marketing/price/domestic/daily-price.html" target="_blank" style="display:block;margin-top:10px;font-size:12px;color:var(--gm);text-decoration:none">Spices Board daily prices →</a>
+<div class="card">
+  <div class="ct">Income records</div>
+  ${db.incomes.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><circle cx="10" cy="10" r="7" stroke-linecap="round"/><path stroke-linecap="round" d="M10 6.5v3.5l2.5 1.5"/></svg><br>No income recorded</div>`:[...db.incomes].sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`
+  <div class="row">
+    <div style="flex:1;min-width:0">
+      <div class="rt">${esc(i.buyer||'—')}</div>
+      <div class="rs">${fd(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}/kg${i.seasonId?' · '+seaName(i.seasonId):''}</div>
+      ${i.notes?`<div style="font-size:11px;color:var(--tx3);margin-top:1px">${esc(i.notes)}</div>`:''}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
+      <div style="color:var(--gm);font-weight:700;font-size:14px">${fc(i.qty*i.pricePerKg)}</div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditIncome('${i.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('income','${i.id}','sale ${fd(i.date)}')">Del</button>
+      </div>
+    </div>
+  </div>`).join('')}
+  <button class="add-btn" onclick="showEditIncome(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
 </div>`;
 }
 
-function modal(body,title){document.getElementById('modal-root').innerHTML=`<div class="mo" onclick="if(event.target===this)closeModal()"><div class="md"><div class="mh"></div>${title?`<div class="mt">${title}</div>`:''}${body}</div></div>`;}
+// ── FORECAST ──────────────────────────────────────────────────────────────────
+function renderForecast(){
+  const mp=db.priceDried||db.priceRaw||2450,plants=totalPlants(),ypp=plants>0?totalYield()/plants:0.45,mexp=db.expenses.length>0?totalExp()/12:3000;
+  const now=new Date();
+  const rows=Array.from({length:8},(_,i)=>{
+    const d=new Date(now.getFullYear(),now.getMonth()+i+1,1),mo=d.getMonth()+1,isPeak=[7,8,9,10].includes(mo);
+    const pY=Math.round(plants*(ypp||0.45)*(isPeak?1.5:0.55)/12),pI=pY*mp,pE=Math.round(mexp*(isPeak?1.3:0.8));
+    return{label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),pY,pI,pE,pP:pI-pE,isPeak};
+  });
+  return`
+<div class="card">
+  <div class="ct">Forecast basis</div>
+  <div class="mg">
+    <div class="met b"><div class="ml">Plants</div><div class="mv">${plants}</div></div>
+    <div class="met g"><div class="ml">Dried price used</div><div class="mv" style="font-size:15px">₹${mp}/kg</div></div>
+    <div class="met"><div class="ml">Yield/plant/yr</div><div class="mv">${(ypp||0.45).toFixed(2)} kg</div></div>
+    <div class="met a"><div class="ml">Peak months</div><div class="mv" style="font-size:13px">Jul–Oct</div></div>
+  </div>
+</div>
+<div class="card">
+  <div class="ct">8-month forecast</div>
+  ${rows.map(r=>`
+  <div class="row">
+    <div>
+      <div class="rt">${r.label}${r.isPeak?'<span class="pk">Peak</span>':''}</div>
+      <div class="rs">~${r.pY}kg · exp ${fc(r.pE)}</div>
+    </div>
+    <div style="font-size:15px;font-weight:700;color:${r.pP>=0?'var(--gm)':'var(--rd)'};margin-left:8px">${fc(r.pP)}</div>
+  </div>`).join('')}
+</div>
+<div class="card">
+  <div class="ct">Market references</div>
+  <div class="row"><div><div class="rt">Vandanmedu — MAS Enterprises</div><div class="rs">~25km · Fridays</div></div></div>
+  <div class="row"><div><div class="rt">Kumily auction center</div><div class="rs">~30km · Daily</div></div></div>
+  <a href="https://www.indianspices.com/marketing/price/domestic/daily-price.html" target="_blank" style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;color:var(--gm);text-decoration:none;font-weight:600">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="5.5"/><path d="M7 4.5v3l2 1" stroke-linecap="round"/></svg>
+    Spices Board daily prices
+  </a>
+</div>`;
+}
+
+// ── MODALS ────────────────────────────────────────────────────────────────────
+function modal(body,title){
+  document.getElementById('modal-root').innerHTML=`
+    <div class="mo" onclick="if(event.target===this)closeModal()">
+      <div class="md">
+        <div class="mh"></div>
+        ${title?`<div class="mt">${title}</div>`:''}
+        ${body}
+      </div>
+    </div>`;
+}
 function closeModal(){document.getElementById('modal-root').innerHTML='';}
 
 function confirmDel(type,id,label){
-  modal(`<div class="cbox"><p>Delete <strong>${label}</strong>?<br>This cannot be undone.</p></div><div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnd" onclick="doDel('${type}','${id}')">Delete</button></div>`,'Confirm delete');
+  modal(`<div class="cbox"><p>Delete <strong>${label}</strong>?<br>This cannot be undone.</p></div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnd" onclick="doDel('${type}','${id}')">Delete</button></div>`,'Confirm delete');
 }
-function doDel(type,id){
-  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes'};
-  const key=map[type];if(!key)return;
-  db[key]=db[key].filter(x=>x.id!==id);
-  saveLocal();closeModal();render();
-}
+function doDel(type,id){deleteItem(type,id);closeModal();render();}
 
+// SECTION
 function showEditSection(id){
   const s=id?db.sections.find(x=>x.id===id):null;
-  modal(`<div class="fg"><label class="fl">Section name</label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
-<div class="fg"><label class="fl">Number of plants</label><input id="f-sp" type="number" value="${s?.plants||''}"/></div>
-<div class="fg"><label class="fl">Age of plants (years)</label><input id="f-sa" type="number" value="${s?.age||''}"/></div>
+  modal(`
+<div class="fg"><label class="fl">Section name</label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
+<div class="fg"><label class="fl">Number of plants</label><input id="f-sp" type="number" value="${s?.plants||''}" placeholder="100"/></div>
+<div class="fg"><label class="fl">Age of plants (years)</label><input id="f-sa" type="number" value="${s?.age||''}" placeholder="2"/></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-sno" type="text" value="${esc(s?.notes||'')}" placeholder="Slope, shade, irrigation…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSection('${id||''}')">Save</button></div>`,s?'Edit section':'Add section');
 }
 function saveSection(id){
   const name=document.getElementById('f-sn').value.trim();if(!name)return;
-  const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim()};
+  const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.sections.findIndex(x=>x.id===id);if(i>=0)db.sections[i]={...db.sections[i],...data};}
   else db.sections.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// SEASON
 function showEditSeason(id){
   const s=id?(db.seasons||[]).find(x=>x.id===id):null;
-  modal(`<div class="fg"><label class="fl">Season name</label><input id="f-snn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Kharif 2025"/></div>
+  modal(`
+<div class="fg"><label class="fl">Season name</label><input id="f-snn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Kharif 2025"/></div>
 <div class="fg"><label class="fl">Start month</label><input id="f-ss" type="month" value="${s?.start||''}"/></div>
 <div class="fg"><label class="fl">End month</label><input id="f-se" type="month" value="${s?.end||''}"/></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-snn2" type="text" value="${esc(s?.notes||'')}" placeholder="Any notes…"/></div>
@@ -333,37 +807,41 @@ function showEditSeason(id){
 }
 function saveSeason(id){
   const name=document.getElementById('f-snn').value.trim();if(!name)return;
-  const data={name,start:document.getElementById('f-ss').value,end:document.getElementById('f-se').value,notes:document.getElementById('f-snn2').value.trim()};
+  const data={name,start:document.getElementById('f-ss').value,end:document.getElementById('f-se').value,notes:document.getElementById('f-snn2').value.trim(),updatedAt:Date.now()};
   if(!db.seasons)db.seasons=[];
   if(id){const i=db.seasons.findIndex(x=>x.id===id);if(i>=0)db.seasons[i]={...db.seasons[i],...data};}
   else db.seasons.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// YIELD
 function showEditYield(id){
   const y=id?db.yields.find(x=>x.id===id):null;
-  modal(`<div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
+  modal(`
+<div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
 <div class="fg"><label class="fl">Season</label><select id="f-yse">${seaOpts('No season')}</select></div>
 <div class="fg"><label class="fl">Month</label><input id="f-yd" type="month" value="${y?.date||new Date().toISOString().slice(0,7)}"/></div>
-<div class="fg"><label class="fl">Yield (kg)</label><input id="f-yq" type="number" value="${y?.qty||''}"/></div>
+<div class="fg"><label class="fl">Yield (kg)</label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveYield('${id||''}')">Save</button></div>`,y?'Edit yield':'Add yield');
   if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;const se=document.getElementById('f-yse');if(se&&y.seasonId)se.value=y.seasonId;}
 }
 function saveYield(id){
   const qty=parseFloat(document.getElementById('f-yq').value);if(!qty)return;
-  const data={sectionId:document.getElementById('f-ys').value||null,seasonId:document.getElementById('f-yse').value||null,date:document.getElementById('f-yd').value,qty};
+  const data={sectionId:document.getElementById('f-ys').value||null,seasonId:document.getElementById('f-yse').value||null,date:document.getElementById('f-yd').value,qty,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// EXPENSE
 function showEditExpense(id){
   const e=id?db.expenses.find(x=>x.id===id):null;
-  modal(`<div class="fg"><label class="fl">Category</label>
+  modal(`
+<div class="fg"><label class="fl">Category</label>
 <select id="f-ec"><option value="labor" ${e?.category==='labor'?'selected':''}>Labor</option><option value="pesticide" ${e?.category==='pesticide'?'selected':''}>Pesticide</option><option value="rawmat" ${e?.category==='rawmat'?'selected':''}>Raw material</option><option value="crop" ${e?.category==='crop'?'selected':''}>Crop</option><option value="other" ${e?.category==='other'?'selected':''}>Other</option></select>
 </div>
 <div class="fg"><label class="fl">Description</label><input id="f-ed" type="text" value="${esc(e?.desc||'')}" placeholder="e.g. Weeding labor"/></div>
-<div class="fg"><label class="fl">Amount (₹)</label><input id="f-ea" type="number" value="${e?.amount||''}"/></div>
+<div class="fg"><label class="fl">Amount (₹)</label><input id="f-ea" type="number" value="${e?.amount||''}" placeholder="5000"/></div>
 <div class="fg"><label class="fl">Date</label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-es">${secOpts()}</select></div>
 <div class="fg"><label class="fl">Season (optional)</label><select id="f-ese">${seaOpts()}</select></div>
@@ -372,56 +850,84 @@ function showEditExpense(id){
 }
 function saveExpense(id){
   const amount=parseFloat(document.getElementById('f-ea').value),desc=document.getElementById('f-ed').value.trim();if(!amount||!desc)return;
-  const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,seasonId:document.getElementById('f-ese').value||null};
+  const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,seasonId:document.getElementById('f-ese').value||null,updatedAt:Date.now()};
   if(id){const i=db.expenses.findIndex(x=>x.id===id);if(i>=0)db.expenses[i]={...db.expenses[i],...data};}
   else db.expenses.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// INCOME — note: price NOT prefilled
 function showEditIncome(id){
   const i=id?db.incomes.find(x=>x.id===id):null;
-  modal(`<div class="fg"><label class="fl">Date</label><input id="f-id" type="date" value="${i?.date||new Date().toISOString().slice(0,10)}"/></div>
-<div class="fg"><label class="fl">Quantity sold (kg)</label><input id="f-iq" type="number" value="${i?.qty||''}"/></div>
-<div class="fg"><label class="fl">Price per kg (₹)</label><input id="f-ip" type="number" value="${i?.pricePerKg||db.marketPrice||''}"/></div>
+  modal(`
+<div class="fg"><label class="fl">Date</label><input id="f-id" type="date" value="${i?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Quantity sold (kg)</label><input id="f-iq" type="number" value="${i?.qty||''}" placeholder="100"/></div>
+<div class="fg"><label class="fl">Price per kg (₹)</label><input id="f-ip" type="number" value="${i?.pricePerKg||''}" placeholder="Enter price"/></div>
+<div class="fg"><label class="fl">Type</label>
+<select id="f-ity"><option value="dried" ${(i?.type||'dried')==='dried'?'selected':''}>Dried cardamom</option><option value="raw" ${i?.type==='raw'?'selected':''}>Raw / green cardamom</option></select>
+</div>
 <div class="fg"><label class="fl">Buyer / market</label><input id="f-ib" type="text" value="${esc(i?.buyer||'')}" placeholder="Vandanmedu auction"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-is">${secOpts()}</select></div>
 <div class="fg"><label class="fl">Season (optional)</label><select id="f-ise">${seaOpts()}</select></div>
-<div class="fg"><label class="fl">Notes</label><input id="f-ino" type="text" value="${esc(i?.notes||'')}" placeholder="Grade, season…"/></div>
+<div class="fg"><label class="fl">Notes</label><input id="f-ino" type="text" value="${esc(i?.notes||'')}" placeholder="Grade, batch…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveIncome('${id||''}')">Save</button></div>`,i?'Edit income':'Add income / sale');
   if(i){const s=document.getElementById('f-is');if(s&&i.sectionId)s.value=i.sectionId;const se=document.getElementById('f-ise');if(se&&i.seasonId)se.value=i.seasonId;}
 }
 function saveIncome(id){
   const qty=parseFloat(document.getElementById('f-iq').value),pricePerKg=parseFloat(document.getElementById('f-ip').value);if(!qty||!pricePerKg)return;
-  const data={date:document.getElementById('f-id').value,qty,pricePerKg,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,seasonId:document.getElementById('f-ise').value||null,notes:document.getElementById('f-ino').value.trim()};
+  const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,seasonId:document.getElementById('f-ise').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.incomes.findIndex(x=>x.id===id);if(i>=0)db.incomes[i]={...db.incomes[i],...data};}
   else db.incomes.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// MARKET PRICE
 function showEditPrice(){
-  modal(`<div class="fg"><label class="fl">Current price (₹/kg)</label><input id="f-mp" type="number" value="${db.marketPrice||''}"/></div>
-<div class="fg"><label class="fl">Source / date</label><input id="f-mpd" type="text" value="${esc(db.marketPriceDate||'')}" placeholder="Vandanmedu, 13 Mar 2025"/></div>
-<p style="font-size:11px;color:var(--tx3);margin-top:4px">Check indianspices.com or call Vandanmedu auction.</p>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePrice()">Update</button></div>`,'Update market price');
+  modal(`
+<div class="fg"><label class="fl">Raw / Green cardamom price (₹/kg)</label><input id="f-mr" type="number" value="${db.priceRaw||''}" placeholder="e.g. 1800"/></div>
+<div class="fg"><label class="fl">Dried cardamom price (₹/kg)</label><input id="f-md" type="number" value="${db.priceDried||''}" placeholder="e.g. 2500"/></div>
+<div class="fg"><label class="fl">Source / date</label><input id="f-ms" type="text" value="${esc(db.priceSource||'')}" placeholder="Vandanmedu auction, 13 Mar"/></div>
+<p style="font-size:11px;color:var(--tx3);margin-top:4px">Or use the Fetch button on dashboard to auto-fetch from Spices Board.</p>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePrice()">Update</button></div>`,'Update market prices');
 }
-function savePrice(){const v=parseFloat(document.getElementById('f-mp').value);if(!v)return;db.marketPrice=v;db.marketPriceDate=document.getElementById('f-mpd').value||new Date().toLocaleDateString('en-IN');saveLocal();closeModal();render();}
+function savePrice(){
+  const r=parseFloat(document.getElementById('f-mr').value),d=parseFloat(document.getElementById('f-md').value);
+  if(!r&&!d)return;
+  if(r)db.priceRaw=r;if(d)db.priceDried=d;
+  db.priceDate=new Date().toLocaleDateString('en-IN');
+  db.priceSource=document.getElementById('f-ms').value||'Manual entry';
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+}
 
+// SYNC SETUP
 function showPassphraseSetup(){
-  modal(`<div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with your family.</strong></p></div>
+  modal(`
+<div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with family.</strong></p></div>
 <div class="fg"><label class="fl">Passphrase (min 6 characters)</label><input id="pp-in" type="password" autocomplete="new-password"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePassphrase()">Save &amp; sync</button></div>`,'Encryption setup');
 }
-function savePassphrase(){const v=document.getElementById('pp-in').value.trim();if(!v||v.length<6){alert('Passphrase must be at least 6 characters');return;}cfg.passphrase=v;saveCfg();closeModal();triggerSync();}
+function savePassphrase(){const v=document.getElementById('pp-in').value.trim();if(!v||v.length<6){alert('Passphrase must be at least 6 characters');return;}cfg.passphrase=v;saveCfg();closeModal();triggerSync(true);}
 
 function showClientIdSetup(){
-  modal(`<div class="sbox"><h3>Enter Google OAuth Client ID</h3><ol><li>Go to console.cloud.google.com</li><li>Enable Google Drive API</li><li>Create OAuth 2.0 Client ID (Web app)</li><li>Add your GitHub Pages URL as authorised origin</li><li>Add your Gmail as test user in OAuth consent screen</li><li>Copy and paste Client ID below</li></ol></div>
+  modal(`
+<div class="sbox"><h3>Enter Google OAuth Client ID</h3><ol><li>Go to console.cloud.google.com</li><li>Enable Google Drive API</li><li>Create OAuth 2.0 Client ID (Web app)</li><li>Add your GitHub Pages URL as authorised origin</li><li>Add your Gmail as test user in OAuth consent screen</li><li>Copy and paste Client ID below</li></ol></div>
 <div class="fg"><label class="fl">Client ID</label><input id="cid-in" type="text" placeholder="…apps.googleusercontent.com"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveClientId()">Save &amp; sync</button></div>`,'Google Drive setup');
 }
-function saveClientId(){const v=document.getElementById('cid-in').value.trim();if(!v||!v.includes('.apps.googleusercontent.com')){alert('Paste a valid Client ID');return;}cfg.clientId=v;saveCfg();closeModal();triggerSync();}
+function saveClientId(){const v=document.getElementById('cid-in').value.trim();if(!v||!v.includes('.apps.googleusercontent.com')){alert('Paste a valid Client ID');return;}cfg.clientId=v;saveCfg();closeModal();triggerSync(true);}
 
-function setTab(tab){S.tab=tab;document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));document.getElementById('nav-'+tab)?.classList.add('active');render();}
-function render(){const el=document.getElementById('main-content');if(!el)return;const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast};el.innerHTML=(map[S.tab]||renderDashboard)();}
+// ── ROUTER ────────────────────────────────────────────────────────────────────
+function setTab(tab){
+  S.tab=tab;
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  document.getElementById('nav-'+tab)?.classList.add('active');
+  render();
+}
+function render(){
+  const el=document.getElementById('main-content');if(!el)return;
+  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast};
+  el.innerHTML=(map[S.tab]||renderDashboard)();
+}
 
 render();
 </script>
