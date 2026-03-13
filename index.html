@@ -26,8 +26,25 @@
   --nav-bg:#FFFFFF;
   --card-bg:#FFFFFF;
 }
-/* ── DARK THEME ── */
-@media(prefers-color-scheme:dark){:root{
+/* ── DARK VARS (reused below) ── */
+/* system dark + manual dark, but NOT when manually set to light */
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme=light]){
+    --gd:#81C784;--gm:#66BB6A;--gl:#4CAF50;--glight:#A5D6A7;
+    --gbg:#1B3A1C;--gbr:#2E5E30;
+    --ad:#FFB74D;--abg:#2A1800;--abr:#5A3800;
+    --rd:#EF9A9A;--rbg:#2A0A0A;--rbr:#5A1A1A;
+    --bd:#90CAF9;--bbg:#0A1828;--bbr:#1A3858;
+    --pd:#CE93D8;--pbg:#1E0A28;--pbr:#3E1A58;
+    --bg:#0F1A0F;--sur:#162016;--sur2:#1C2A1C;--sur3:#1A2E1A;
+    --bor:rgba(255,255,255,0.08);--bor2:rgba(255,255,255,0.16);
+    --tx:#D4EDD4;--tx2:#9AB89A;--tx3:#5A7A5A;
+    --shadow:0 2px 12px rgba(0,0,0,0.4);--shadow2:0 4px 20px rgba(0,0,0,0.5);
+    --hdr-bg:#162016;--nav-bg:#162016;--card-bg:#1C2A1C;
+  }
+}
+/* manual dark override */
+:root[data-theme=dark]{
   --gd:#81C784;--gm:#66BB6A;--gl:#4CAF50;--glight:#A5D6A7;
   --gbg:#1B3A1C;--gbr:#2E5E30;
   --ad:#FFB74D;--abg:#2A1800;--abr:#5A3800;
@@ -37,12 +54,26 @@
   --bg:#0F1A0F;--sur:#162016;--sur2:#1C2A1C;--sur3:#1A2E1A;
   --bor:rgba(255,255,255,0.08);--bor2:rgba(255,255,255,0.16);
   --tx:#D4EDD4;--tx2:#9AB89A;--tx3:#5A7A5A;
-  --shadow:0 2px 12px rgba(0,0,0,0.4);
-  --shadow2:0 4px 20px rgba(0,0,0,0.5);
-  --hdr-bg:#162016;
-  --nav-bg:#162016;
-  --card-bg:#1C2A1C;
-}}
+  --shadow:0 2px 12px rgba(0,0,0,0.4);--shadow2:0 4px 20px rgba(0,0,0,0.5);
+  --hdr-bg:#162016;--nav-bg:#162016;--card-bg:#1C2A1C;
+}
+/* manual light override */
+:root[data-theme=light]{
+  --gd:#1B5E20;--gm:#2E7D32;--gl:#43A047;--glight:#66BB6A;
+  --gbg:#E8F5E9;--gbr:#A5D6A7;
+  --ad:#E65100;--abg:#FFF3E0;--abr:#FFCC80;
+  --rd:#C62828;--rbg:#FFEBEE;--rbr:#EF9A9A;
+  --bd:#1565C0;--bbg:#E3F2FD;--bbr:#90CAF9;
+  --pd:#6A1B9A;--pbg:#F3E5F5;--pbr:#CE93D8;
+  --bg:#F1F8F1;--sur:#FFFFFF;--sur2:#F5FAF5;--sur3:#EDF7ED;
+  --bor:rgba(0,0,0,0.08);--bor2:rgba(0,0,0,0.15);
+  --tx:#1A2E1A;--tx2:#4A5E4A;--tx3:#7A8E7A;
+  --shadow:0 2px 12px rgba(46,125,50,0.08);--shadow2:0 4px 20px rgba(46,125,50,0.12);
+  --hdr-bg:#FFFFFF;--nav-bg:#FFFFFF;--card-bg:#FFFFFF;
+}
+/* ── THEME TOGGLE BUTTON ── */
+.theme-btn{background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:5px 9px;cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;transition:background 0.2s}
+.theme-btn:active{opacity:0.7}
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100dvh;max-width:520px;margin:0 auto;display:flex;flex-direction:column}
@@ -190,6 +221,7 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
     </div>
   </div>
   <div class="hdr-right">
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
     <div class="online-dot" id="online-dot" title="Network status"></div>
     <button class="sync-btn" id="sync-btn" onclick="triggerSync(true)">
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
@@ -273,6 +305,33 @@ function loadLocal(){
 }
 function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg));}catch(e){}}
 loadLocal();
+
+// ── THEME ─────────────────────────────────────────────────────────────────────
+function getSystemTheme(){return window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';}
+function resolveTheme(){return cfg.theme||'system';}
+function applyTheme(){
+  const pref=resolveTheme();
+  const actual=pref==='system'?getSystemTheme():pref;
+  document.documentElement.setAttribute('data-theme',actual);
+  const btn=document.getElementById('theme-btn');
+  if(btn){
+    if(pref==='system') btn.textContent=actual==='dark'?'🌙':'☀️';
+    else if(pref==='dark') btn.textContent='🌙';
+    else btn.textContent='☀️';
+    btn.title=pref==='system'?'Following system (tap to override)':pref==='dark'?'Dark mode (tap for light)':'Light mode (tap for dark)';
+  }
+}
+function toggleTheme(){
+  const pref=resolveTheme();
+  // Cycle: system → dark → light → system
+  if(pref==='system'){cfg.theme=getSystemTheme()==='dark'?'light':'dark';}
+  else if(pref==='dark'){cfg.theme='light';}
+  else{cfg.theme='system';}
+  saveCfg();applyTheme();
+}
+// Listen for system theme changes (affects 'system' mode only)
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(resolveTheme()==='system')applyTheme();});
+applyTheme();
 
 // ── CRYPTO ────────────────────────────────────────────────────────────────────
 async function getKey(pp,salt){
@@ -986,6 +1045,14 @@ function renderSettings(){
 <div class="card">
   <div class="ct">Sync settings</div>
   <div class="row">
+    <div><div class="rt">Theme</div><div class="rs" id="theme-setting-label"></div></div>
+    <div style="display:flex;gap:5px">
+      <button onclick="setThemePref('light')" id="tbtn-light" class="ia">☀️</button>
+      <button onclick="setThemePref('system')" id="tbtn-system" class="ia">Auto</button>
+      <button onclick="setThemePref('dark')" id="tbtn-dark" class="ia">🌙</button>
+    </div>
+  </div>
+  <div class="row">
     <div><div class="rt">Passphrase</div><div class="rs">${cfg.passphrase?'Set ✓':'Not set'}</div></div>
     <button onclick="showChangePassphrase()" class="ia e">Change</button>
   </div>
@@ -1164,6 +1231,17 @@ function doClearLocal(){
   closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
 }
 
+function setThemePref(pref){
+  cfg.theme=pref;saveCfg();applyTheme();
+  // Update active state on buttons if settings tab is open
+  ['light','system','dark'].forEach(t=>{
+    const b=document.getElementById('tbtn-'+t);
+    if(b){b.style.background=t===pref?'var(--gbg)':'';b.style.borderColor=t===pref?'var(--gbr)':'var(--bor2)';b.style.color=t===pref?'var(--gm)':'var(--tx2)';}
+  });
+  const lbl=document.getElementById('theme-setting-label');
+  if(lbl)lbl.textContent=pref==='system'?'Following system':pref==='dark'?'Dark mode':'Light mode';
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 function setTab(tab){
   S.tab=tab;
@@ -1175,6 +1253,7 @@ function render(){
   const el=document.getElementById('main-content');if(!el)return;
   const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast,settings:renderSettings};
   el.innerHTML=(map[S.tab]||renderDashboard)();
+  if(S.tab==='settings') setThemePref(resolveTheme());
 }
 
 render();
