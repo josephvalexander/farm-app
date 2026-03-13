@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
 <meta name="theme-color" content="#2E7D32"/>
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="V-Plantations"/>
 <title>V-Plantations</title>
 <style>
@@ -256,6 +257,10 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5v3.5l2.5 1.5"/></svg>
     Income<div class="nb-dot"></div>
   </button>
+  <button class="nb" id="nav-drying" onclick="setTab('drying')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16c0-4 2-6 6-6s6 2 6 6"/><path d="M10 10V4"/><path d="M7 6l3-2 3 2"/><ellipse cx="10" cy="16.5" rx="3.5" ry="1.5"/></svg>
+    Drying<div class="nb-dot"></div>
+  </button>
   <button class="nb" id="nav-forecast" onclick="setTab('forecast')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5.5 3 2 4-6 3 2.5M15 6h2v2"/></svg>
     Forecast<div class="nb-dot"></div>
@@ -278,10 +283,10 @@ const NEWS_KEY='vp_news_v1';
 const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,newsApiKey:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
-let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],
+let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
+let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',expTab:'all',syncing:false,fetchingPrice:false,oauthToken:null,pendingSync:false,fetchingNews:false};
+let S={tab:'dashboard',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,oauthToken:null,geminiKey:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -294,6 +299,7 @@ function loadLocal(){
     if(d){const p=JSON.parse(d);
       // migrate old schema: marketPrice → priceDried
       if(p.marketPrice&&!p.priceDried){p.priceDried=p.marketPrice;p.priceDate=p.marketPriceDate||null;delete p.marketPrice;delete p.marketPriceDate;}
+      if(!p.dryings)p.dryings=[];
       db={...db,...p};
     }
     const c=localStorage.getItem(CFG_KEY);
@@ -581,7 +587,7 @@ const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,"&#
 
 // ── DELETE WITH TRACKING ──────────────────────────────────────────────────────
 function deleteItem(type,id){
-  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes'};
+  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes',drying:'dryings'};
   const key=map[type];if(!key)return;
   db[key]=db[key].filter(x=>x.id!==id);
   if(!db.deletedIds)db.deletedIds=[];
@@ -704,10 +710,10 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
     renderInsightsCard({...insights,ts:Date.now()});
     showToast('Insights updated ✓');
   }catch(e){
-    console.error('Gemini insights error:',e);
     const el=document.getElementById('insights-card-body');
-    if(el)el.innerHTML=insightsErrorHTML(e.message);
-    showToast('Insights failed: '+e.message);
+    const msg=e.message&&e.message.length<80?e.message:'Check your API key or internet connection.';
+    if(el)el.innerHTML=insightsErrorHTML(msg);
+    showToast('Insights unavailable — tap Retry');
   }
   S.fetchingInsights=false;
 }
@@ -762,8 +768,11 @@ function renderInsightsLoading(){
 }
 
 function insightsErrorHTML(msg){
-  return`<div class="cbox" style="margin-bottom:10px"><p>${msg||'Failed to load insights'}</p></div>
-    <button onclick="fetchAIInsights(true)" style="width:100%;padding:10px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--gm);cursor:pointer;font-family:inherit">↻ Retry</button>`;
+  return`<div style="text-align:center;padding:12px 0">
+    <div style="font-size:22px;margin-bottom:8px">⚠️</div>
+    <div style="font-size:13px;color:var(--tx2);margin-bottom:12px">${msg||'Could not load insights. Check your Gemini API key and internet connection.'}</div>
+    <button onclick="fetchAIInsights(true)" style="padding:9px 20px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--gm);cursor:pointer;font-family:inherit">↻ Retry</button>
+  </div>`;
 }
 
 const OUTLOOK_STYLE={
@@ -955,23 +964,7 @@ function renderSections(){
   </div>
 </div>
 
-<div class="card">
-  <div class="ct">Seasons</div>
-  ${(db.seasons||[]).length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><path stroke-linecap="round" d="M10 2v16M4 6l6 4 6-4M4 14l6-4 6 4"/></svg><br>No seasons yet</div>`:
-  (db.seasons||[]).map(s=>`
-  <div class="row">
-    <div style="flex:1;min-width:0">
-      <div class="rt">${esc(s.name)}</div>
-      <div class="rs">${s.start||''}${s.end?' → '+s.end:''}${s.notes?' · '+esc(s.notes):''}</div>
-    </div>
-    <div class="racts">
-      <button class="ia e" onclick="showEditSeason('${s.id}')">Edit</button>
-      <button class="ia d" onclick="confirmDel('season','${s.id}','${esc(s.name)}')">Del</button>
-    </div>
-  </div>`).join('')}
-  <button class="add-btn" onclick="showEditSeason(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add season</button>
-</div>`;
-}
+`;}
 
 // ── YIELD ─────────────────────────────────────────────────────────────────────
 // ── CHART HELPERS ─────────────────────────────────────────────────────────────
@@ -1079,52 +1072,72 @@ function svgDonut(slices, opts={}){
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><circle cx="${CX}" cy="${CY}" r="${R+2}" fill="var(--sur2)"/>${paths}<text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--tx)">${cLabel}</text><text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx3)">${cSub}</text>${legend}</svg>`;
 }
 
+// ── PERIOD FILTER HELPER ──────────────────────────────────────────────────────
+function periodFilterUI(stateKey, onchange){
+  const p=S[stateKey];
+  const btn=(v,lbl)=>`<button onclick="S['${stateKey}']='${v}';render()" style="padding:5px 12px;font-size:11px;font-weight:600;border-radius:14px;border:1.5px solid ${p===v?'var(--bd)':'var(--bor2)'};background:${p===v?'var(--bbg)':'transparent'};color:${p===v?'var(--bd)':'var(--tx3)'};cursor:pointer;font-family:inherit">${lbl}</button>`;
+  return`<div style="display:flex;gap:6px;margin-bottom:12px">${btn('month','Monthly')}${btn('quarter','Quarterly')}${btn('year','Yearly')}</div>`;
+}
+
+function groupByPeriod(entries, dateFn, valFn, period){
+  // returns sorted [{label, value}]
+  const map={};
+  entries.forEach(e=>{
+    const d=dateFn(e); if(!d) return;
+    let key;
+    if(period==='month') key=d.slice(0,7);
+    else if(period==='quarter'){
+      const yr=d.slice(0,4), mo=parseInt(d.slice(5,7));
+      key=yr+' Q'+Math.ceil(mo/3);
+    } else key=d.slice(0,4);
+    map[key]=(map[key]||0)+valFn(e);
+  });
+  return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v])=>({label:k,value:v}));
+}
+
+function shortLabel(l,period){
+  if(period==='month') return l.slice(2); // 24-03 → 03
+  if(period==='quarter') return l.replace(/20(\d\d)/,'\'$1'); // 2024 Q3 → '24 Q3
+  return l.slice(2); // 2024 → 24
+}
+
 // ── YIELD ─────────────────────────────────────────────────────────────────────
 function renderYield(){
-  // Build monthly totals
-  const byMonth={};
-  db.yields.forEach(y=>byMonth[y.date]=(byMonth[y.date]||0)+y.qty);
-  const months=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0]));
-  const maxY=Math.max(...Object.values(byMonth),1);
-
-  // By section donut data
+  const period=S.yieldPeriod||'month';
+  const grouped=groupByPeriod(db.yields, y=>y.date?y.date+'-01':null, y=>y.qty||0, period);
+  const totalKg=db.yields.reduce((s,y)=>s+(y.qty||0),0);
+  const avgPeriod=grouped.length?Math.round(totalKg/grouped.length):0;
+  const peakEntry=grouped.length?grouped.reduce((a,b)=>b.value>a.value?b:a):null;
   const bySec={};
   db.yields.forEach(y=>{const k=y.sectionId||'__all';bySec[k]=(bySec[k]||0)+y.qty;});
   const secColors=['var(--gm)','var(--ad)','var(--bd)','var(--pd)','var(--rd)','var(--gl)'];
   const secSlices=Object.entries(bySec).map(([id,v],i)=>({label:secName(id).slice(0,12),value:v,color:secColors[i%secColors.length]}));
-
-  // Line chart data — monthly totals
-  const lineData=months.map(([m,q])=>({x:m.slice(2),y:q})); // trim year prefix for display
-
-  // Totals
-  const totalKg=db.yields.reduce((s,y)=>s+(y.qty||0),0);
-  const avgMo=months.length?Math.round(totalKg/months.length):0;
-  const peakMo=months.length?months.reduce((a,b)=>b[1]>a[1]?b:a):null;
-
+  const lineData=grouped.map(g=>({x:shortLabel(g.label,period),y:g.value}));
+  const periodLbl={month:'month',quarter:'quarter',year:'year'}[period];
   return`
 <div class="card">
+  <button class="add-btn" onclick="showEditYield(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
   <div class="ct">Yield overview</div>
   <div class="mg" style="margin-bottom:14px">
     <div class="met g"><div class="ml">Total yield</div><div class="mv">${totalKg} kg</div><div class="ms">${db.yields.length} records</div></div>
-    <div class="met b"><div class="ml">Monthly avg</div><div class="mv">${avgMo} kg</div><div class="ms">over ${months.length} months</div></div>
-    <div class="met"><div class="ml">Best month</div><div class="mv" style="font-size:14px">${peakMo?peakMo[0]:'—'}</div><div class="ms">${peakMo?peakMo[1]+' kg':''}</div></div>
+    <div class="met b"><div class="ml">Avg / ${periodLbl}</div><div class="mv">${avgPeriod} kg</div><div class="ms">over ${grouped.length} ${periodLbl}s</div></div>
+    <div class="met"><div class="ml">Best ${periodLbl}</div><div class="mv" style="font-size:13px">${peakEntry?shortLabel(peakEntry.label,period):'—'}</div><div class="ms">${peakEntry?peakEntry.value+' kg':''}</div></div>
     <div class="met a"><div class="ml">Yield/plant</div><div class="mv" style="font-size:16px">${totalPlants()>0?(totalKg/totalPlants()).toFixed(2):0}</div><div class="ms">kg/plant</div></div>
   </div>
-  ${months.length>=2?`
+  ${periodFilterUI('yieldPeriod')}
+  ${grouped.length>=2?`
   <div style="margin-bottom:4px">
     <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Yield over time (kg)</div>
     ${svgLine([{label:'Yield',values:lineData,color:'var(--gm)'}],{h:150,yFmt:v=>v})}
-  </div>`:months.length>0?`
+  </div>`:grouped.length===1?`
   <div style="margin-bottom:4px">
-    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Yield by month (kg)</div>
-    ${svgBar(months.map(([m,q])=>({label:m.slice(2),value:q,color:'var(--gm)'})),{h:150})}
+    ${svgBar(grouped.map(g=>({label:shortLabel(g.label,period),value:g.value,color:'var(--gm)'})),{h:120})}
   </div>`:''}
   ${secSlices.length>1?`
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bor)">
     <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">By section</div>
     ${svgDonut(secSlices,{centerLabel:totalKg+'kg',centerSub:'total',w:290,h:Math.min(40+secSlices.length*20,150)})}
   </div>`:''}
-  <button class="add-btn" onclick="showEditYield(null)" style="margin-top:14px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
 </div>
 <div class="card">
   <div class="ct">All records</div>
@@ -1132,7 +1145,7 @@ function renderYield(){
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${secName(y.sectionId)}</div>
-      <div class="rs">${y.date}${y.seasonId?' · '+seaName(y.seasonId):''}</div>
+      <div class="rs">${y.date}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
       <div style="color:var(--gm);font-weight:700;font-size:15px">${y.qty} kg</div>
@@ -1147,112 +1160,79 @@ function renderYield(){
 
 // ── EXPENSES ──────────────────────────────────────────────────────────────────
 function renderExpenses(){
+  const period=S.expPeriod||'month';
   const t=S.expTab,filtered=t==='all'?db.expenses:db.expenses.filter(e=>e.category===t);
-  const total=filtered.reduce((s,e)=>s+e.amount,0);
-
-  // Category breakdown donut
+  const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
   const byCat={};
   db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const catColors={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx2)'};
   const catSlices=Object.entries(byCat).filter(([,v])=>v>0).map(([k,v])=>({label:CL[k]||k,value:v,color:catColors[k]||'var(--tx3)'}));
-
-  // Monthly trend — all expenses
-  const byMo={};
-  db.expenses.forEach(e=>{if(e.date){const m=e.date.slice(0,7);byMo[m]=(byMo[m]||0)+e.amount;}});
-  const moEntries=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
-
-  // Monthly trend — filtered (if a category tab is active)
-  const byMoFiltered={};
-  filtered.forEach(e=>{if(e.date){const m=e.date.slice(0,7);byMoFiltered[m]=(byMoFiltered[m]||0)+e.amount;}});
-  const moFiltered=Object.entries(byMoFiltered).sort((a,b)=>a[0].localeCompare(b[0]));
-
-  const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
-  const avgMoExp=moEntries.length?Math.round(totalAll/moEntries.length):0;
-  const peakMoExp=moEntries.length?moEntries.reduce((a,b)=>b[1]>a[1]?b:a):null;
-
+  const grouped=groupByPeriod(db.expenses, e=>e.date, e=>e.amount||0, period);
+  const avgPeriod=grouped.length?Math.round(totalAll/grouped.length):0;
+  const peakEntry=grouped.length?grouped.reduce((a,b)=>b.value>a.value?b:a):null;
+  const periodLbl={month:'month',quarter:'quarter',year:'year'}[period];
   return`
 <div class="card">
+  <button onclick="showEditExpense(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
   <div class="ct">Expense overview</div>
   <div class="mg" style="margin-bottom:14px">
     <div class="met r"><div class="ml">Total spent</div><div class="mv">${fc(totalAll)}</div><div class="ms">${db.expenses.length} entries</div></div>
-    <div class="met"><div class="ml">Monthly avg</div><div class="mv" style="font-size:15px">${fc(avgMoExp)}</div><div class="ms">over ${moEntries.length} months</div></div>
-    <div class="met a"><div class="ml">Highest month</div><div class="mv" style="font-size:13px">${peakMoExp?peakMoExp[0]:'—'}</div><div class="ms">${peakMoExp?fc(peakMoExp[1]):''}</div></div>
-    <div class="met b"><div class="ml">Top category</div><div class="mv" style="font-size:13px">${catSlices.length?catSlices.sort((a,b)=>b.value-a.value)[0].label:'—'}</div></div>
+    <div class="met"><div class="ml">Avg / ${periodLbl}</div><div class="mv" style="font-size:15px">${fc(avgPeriod)}</div><div class="ms">over ${grouped.length} ${periodLbl}s</div></div>
+    <div class="met a"><div class="ml">Highest ${periodLbl}</div><div class="mv" style="font-size:13px">${peakEntry?shortLabel(peakEntry.label,period):'—'}</div><div class="ms">${peakEntry?fc(peakEntry.value):''}</div></div>
+    <div class="met b"><div class="ml">Top category</div><div class="mv" style="font-size:13px">${catSlices.length?[...catSlices].sort((a,b)=>b.value-a.value)[0].label:'—'}</div></div>
   </div>
   ${catSlices.length>1?`
   <div style="margin-bottom:14px">
     <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">By category</div>
     ${svgDonut(catSlices,{centerLabel:fc(totalAll).replace('₹',''),centerSub:'total ₹',w:290,h:Math.min(40+catSlices.length*20,150)})}
   </div>`:''}
-  ${moEntries.length>=2?`
-  <div style="padding-top:14px;border-top:1px solid var(--bor)">
-    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Monthly spend trend</div>
-    ${svgLine([{label:'Expenses',values:moEntries.map(([m,v])=>({x:m.slice(2),y:v})),color:'var(--rd)'}],{h:140,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+  ${periodFilterUI('expPeriod')}
+  ${grouped.length>=2?`
+  <div style="padding-top:4px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Spend trend</div>
+    ${svgLine([{label:'Expenses',values:grouped.map(g=>({x:shortLabel(g.label,period),y:g.value})),color:'var(--rd)'}],{h:140,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
   </div>`:''}
 </div>
 <div class="card">
-  <div class="ct">Expenses</div>
-  <div class="tabs">${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button class="tab ${t===c?'active':''}" onclick="S.expTab='${c}';render()">${c==='all'?'All':CL[c]}</button>`).join('')}</div>
-  ${t!=='all'&&moFiltered.length>=2?`
-  <div style="margin-bottom:12px">
-    ${svgBar(moFiltered.map(([m,v])=>({label:m.slice(2),value:v,color:catColors[t]||'var(--gm)'})),{h:110,yFmt:v=>'₹'+Math.round(v/1000)+'k',vFmt:v=>Math.round(v/1000)+'k'})}
-  </div>`:''}
-  <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;font-weight:600">Total: ${fc(total)}</div>
-  ${filtered.length===0?'<div class="empty">No expenses here</div>':[...filtered].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`
+  <div class="ct">Expenses
+    <span style="display:inline-flex;gap:4px;margin-left:auto">
+      ${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button onclick="S.expTab='${c}';render()" style="padding:3px 8px;font-size:10px;border-radius:10px;border:1px solid ${t===c?'var(--bd)':'var(--bor2)'};background:${t===c?'var(--bbg)':'transparent'};color:${t===c?'var(--bd)':'var(--tx3)'};cursor:pointer;font-family:inherit">${c==='all'?'All':CL[c]||c}</button>`).join('')}
+    </span>
+  </div>
+  ${filtered.length===0?`<div class="empty">No expenses${t!=='all'?' in this category':''}</div>`:[...filtered].sort((a,b)=>b.date?.localeCompare(a.date||'')||0).map(e=>`
   <div class="row">
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
-        <span class="badge ${BC[e.category]||'bo'}">${CL[e.category]||e.category}</span>
-        <span class="rt">${esc(e.desc)}</span>
-      </div>
-      <div class="rs">${fd(e.date)}${e.sectionId?' · '+secName(e.sectionId):''}${e.seasonId?' · '+seaName(e.seasonId):''}</div>
+      <div class="rt">${esc(e.desc)}</div>
+      <div class="rs">${CL[e.category]||e.category}${e.date?' · '+fd(e.date):''}${e.sectionId?' · '+secName(e.sectionId):''}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
-      <div style="font-size:14px;font-weight:700">${fc(e.amount)}</div>
+      <div style="color:var(--rd);font-weight:700;font-size:14px">${fc(e.amount)}</div>
       <div class="racts">
         <button class="ia e" onclick="showEditExpense('${e.id}')">Edit</button>
         <button class="ia d" onclick="confirmDel('expense','${e.id}','${esc(e.desc)}')">Del</button>
       </div>
     </div>
   </div>`).join('')}
-  <button class="add-btn" onclick="showEditExpense(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
 </div>`;
 }
 
 // ── INCOME ────────────────────────────────────────────────────────────────────
 function renderIncome(){
-  const total=totalInc(),kg=db.incomes.reduce((s,i)=>s+i.qty,0),avg=kg>0?Math.round(total/kg):0;
-
-  // Monthly income trend
-  const byMo={};
-  db.incomes.forEach(i=>{if(i.date){const m=i.date.slice(0,7);byMo[m]=(byMo[m]||0)+(i.qty||0)*(i.pricePerKg||0);}});
-  const moInc=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
-
-  // Monthly kg sold
-  const byMoKg={};
-  db.incomes.forEach(i=>{if(i.date){const m=i.date.slice(0,7);byMoKg[m]=(byMoKg[m]||0)+(i.qty||0);}});
-  const moKg=Object.entries(byMoKg).sort((a,b)=>a[0].localeCompare(b[0]));
-
-  // Income vs expense monthly overlay (only months that have both)
-  const allMos=new Set([...Object.keys(byMo),...Object.keys(
-    Object.fromEntries(db.expenses.map(e=>[e.date?.slice(0,7)||'',1]))
-  )].filter(Boolean));
-  const expByMo={};
-  db.expenses.forEach(e=>{if(e.date){const m=e.date.slice(0,7);expByMo[m]=(expByMo[m]||0)+e.amount;}});
-  const overlapMos=[...allMos].sort();
-  const hasOverlap=overlapMos.length>=2;
-
-  // By buyer donut
-  const byBuyer={};
-  db.incomes.forEach(i=>{const k=i.buyer||'Unknown';byBuyer[k]=(byBuyer[k]||0)+(i.qty||0)*(i.pricePerKg||0);});
-  const buyerColors=['var(--gm)','var(--bd)','var(--ad)','var(--pd)','var(--gl)'];
-  const buyerSlices=Object.entries(byBuyer).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v],i)=>({label:k.slice(0,12),value:v,color:buyerColors[i%buyerColors.length]}));
-
+  const period=S.incPeriod||'month';
+  const total=db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const kg=db.incomes.reduce((s,i)=>s+(i.qty||0),0);
+  const avg=kg>0?Math.round(total/kg):0;
+  const grouped=groupByPeriod(db.incomes, i=>i.date, i=>(i.qty||0)*(i.pricePerKg||0), period);
+  const expGrouped=groupByPeriod(db.expenses, e=>e.date, e=>e.amount||0, period);
+  const expMap=Object.fromEntries(expGrouped.map(g=>[g.label,g.value]));
+  const allPeriods=[...new Set([...grouped.map(g=>g.label),...expGrouped.map(g=>g.label)])].sort();
+  const hasOverlap=allPeriods.length>=2&&grouped.length>=1&&expGrouped.length>=1;
   const netProfit=total-totalExp();
-  const peakMo=moInc.length?moInc.reduce((a,b)=>b[1]>a[1]?b:a):null;
-
+  const peakEntry=grouped.length?grouped.reduce((a,b)=>b.value>a.value?b:a):null;
+  const periodLbl={month:'month',quarter:'quarter',year:'year'}[period];
   return`
 <div class="card">
+  <button onclick="showEditIncome(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
   <div class="ct">Income overview</div>
   <div class="mg" style="margin-bottom:14px">
     <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div><div class="ms">${db.incomes.length} sales</div></div>
@@ -1260,23 +1240,19 @@ function renderIncome(){
     <div class="met a"><div class="ml">Avg price/kg</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div></div>
     <div class="met ${netProfit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv" style="font-size:15px">${fc(netProfit)}</div></div>
   </div>
-  ${moInc.length>=2?`
+  ${periodFilterUI('incPeriod')}
+  ${grouped.length>=2?`
   <div style="margin-bottom:14px">
-    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Monthly income</div>
-    ${svgLine([{label:'Income',values:moInc.map(([m,v])=>({x:m.slice(2),y:v})),color:'var(--gm)'}],{h:150,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Income over time</div>
+    ${svgLine([{label:'Income',values:grouped.map(g=>({x:shortLabel(g.label,period),y:g.value})),color:'var(--gm)'}],{h:150,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
   </div>`:''}
   ${hasOverlap?`
   <div style="margin-bottom:14px;padding-top:14px;border-top:1px solid var(--bor)">
     <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Income vs expenses</div>
     ${svgLine([
-      {label:'Income',values:overlapMos.map(m=>({x:m.slice(2),y:byMo[m]||0})),color:'var(--gm)'},
-      {label:'Expenses',values:overlapMos.map(m=>({x:m.slice(2),y:expByMo[m]||0})),color:'var(--rd)'}
+      {label:'Income',values:allPeriods.map(m=>({x:shortLabel(m,period),y:grouped.find(g=>g.label===m)?.value||0})),color:'var(--gm)'},
+      {label:'Expenses',values:allPeriods.map(m=>({x:shortLabel(m,period),y:expMap[m]||0})),color:'var(--rd)'}
     ],{h:160,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
-  </div>`:''}
-  ${buyerSlices.length>1?`
-  <div style="padding-top:14px;border-top:1px solid var(--bor)">
-    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Revenue by buyer</div>
-    ${svgDonut(buyerSlices,{centerLabel:fc(total).replace('₹',''),centerSub:'total ₹',w:290,h:Math.min(40+buyerSlices.length*20,160)})}
   </div>`:''}
 </div>
 <div class="card">
@@ -1284,8 +1260,8 @@ function renderIncome(){
   ${db.incomes.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><circle cx="10" cy="10" r="7" stroke-linecap="round"/><path stroke-linecap="round" d="M10 6.5v3.5l2.5 1.5"/></svg><br>No income recorded</div>`:[...db.incomes].sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`
   <div class="row">
     <div style="flex:1;min-width:0">
-      <div class="rt">${esc(i.buyer||'—')}</div>
-      <div class="rs">${fd(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}/kg${i.seasonId?' · '+seaName(i.seasonId):''}</div>
+      <div class="rt">${esc(i.buyer||'—')} <span style="font-size:10px;color:var(--tx3);font-weight:500;background:var(--bor2);padding:1px 5px;border-radius:8px;margin-left:3px">${i.type==='raw'?'Raw':'Dried'}</span></div>
+      <div class="rs">${fd(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}/kg</div>
       ${i.notes?`<div style="font-size:11px;color:var(--tx3);margin-top:1px">${esc(i.notes)}</div>`:''}
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
@@ -1296,12 +1272,77 @@ function renderIncome(){
       </div>
     </div>
   </div>`).join('')}
-  <button class="add-btn" onclick="showEditIncome(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
 </div>`;
 }
 
+// ── DRYING ────────────────────────────────────────────────────────────────────
+function renderDrying(){
+  const period=S.dryPeriod||'month';
+  const totalRawIn=db.dryings.reduce((s,d)=>s+(d.rawQty||0),0);
+  const totalDriedOut=db.dryings.reduce((s,d)=>s+(d.driedQty||0),0);
+  const avgRatio=totalRawIn>0?((totalDriedOut/totalRawIn)*100).toFixed(1):0;
 
-// ── FORECAST ──────────────────────────────────────────────────────────────────
+  // Income split by type
+  const rawIncome=db.incomes.filter(i=>i.type==='raw').reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const driedIncome=db.incomes.filter(i=>i.type==='dried'||(i.type==null&&i.pricePerKg)).reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+
+  const rawGrouped=groupByPeriod(db.incomes.filter(i=>i.type==='raw'), i=>i.date, i=>(i.qty||0)*(i.pricePerKg||0), period);
+  const driedGrouped=groupByPeriod(db.incomes.filter(i=>i.type==='dried'||!i.type), i=>i.date, i=>(i.qty||0)*(i.pricePerKg||0), period);
+  const allPeriods=[...new Set([...rawGrouped.map(g=>g.label),...driedGrouped.map(g=>g.label)])].sort();
+  const rMap=Object.fromEntries(rawGrouped.map(g=>[g.label,g.value]));
+  const dMap=Object.fromEntries(driedGrouped.map(g=>[g.label,g.value]));
+
+  return`
+<div class="card">
+  <button onclick="showEditDrying(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--abg);border:1.5px solid var(--abr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--ad);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add drying record</button>
+  <div class="ct">Drying overview</div>
+  <div class="mg" style="margin-bottom:14px">
+    <div class="met"><div class="ml">Raw green in</div><div class="mv">${totalRawIn} kg</div><div class="ms">${db.dryings.length} batches</div></div>
+    <div class="met g"><div class="ml">Dried out</div><div class="mv">${totalDriedOut} kg</div></div>
+    <div class="met a"><div class="ml">Avg ratio</div><div class="mv">${avgRatio}%</div><div class="ms">raw → dried</div></div>
+    <div class="met b"><div class="ml">Typical ratio</div><div class="mv">22–28%</div><div class="ms">industry avg</div></div>
+  </div>
+  <p style="font-size:11px;color:var(--tx3);margin-bottom:14px;line-height:1.5">Industry average: ~4–4.5 kg raw green cardamom yields 1 kg dried (22–26% ratio). Track each batch below to monitor your drying efficiency.</p>
+</div>
+
+<div class="card">
+  <div class="ct">Income: Raw vs Dried</div>
+  <div class="mg" style="margin-bottom:14px">
+    <div class="met"><div class="ml">🌿 Raw / green</div><div class="mv" style="font-size:15px">${fc(rawIncome)}</div><div class="ms">${db.incomes.filter(i=>i.type==='raw').length} sales</div></div>
+    <div class="met g"><div class="ml">☀️ Dried</div><div class="mv" style="font-size:15px">${fc(driedIncome)}</div><div class="ms">${db.incomes.filter(i=>i.type==='dried'||!i.type).length} sales</div></div>
+  </div>
+  ${periodFilterUI('dryPeriod')}
+  ${allPeriods.length>=2?`
+  <div style="margin-top:4px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Raw vs dried income</div>
+    ${svgLine([
+      {label:'🌿 Raw',values:allPeriods.map(m=>({x:shortLabel(m,period),y:rMap[m]||0})),color:'var(--gl)'},
+      {label:'☀️ Dried',values:allPeriods.map(m=>({x:shortLabel(m,period),y:dMap[m]||0})),color:'var(--ad)'}
+    ],{h:160,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+  </div>`:allPeriods.length>0?`<p style="font-size:12px;color:var(--tx3);text-align:center;padding:8px 0">Add income records with type Raw or Dried to see the chart</p>`:''}
+</div>
+
+<div class="card">
+  <div class="ct">Drying records</div>
+  ${db.dryings.length===0?`<div class="empty">No drying records yet</div>`:[...db.dryings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(d=>{
+    const ratio=d.rawQty>0?((d.driedQty/d.rawQty)*100).toFixed(1):0;
+    const ratioColor=ratio>=22?'var(--gm)':'var(--rd)';
+    return`<div class="row">
+    <div style="flex:1;min-width:0">
+      <div class="rt">${fd(d.date)}${d.notes?' · '+esc(d.notes):''}</div>
+      <div class="rs">${d.rawQty}kg raw → ${d.driedQty}kg dried</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
+      <div style="color:${ratioColor};font-weight:700;font-size:14px">${ratio}%</div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditDrying('${d.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('drying','${d.id}','drying ${fd(d.date)}')">Del</button>
+      </div>
+    </div>
+  </div>`;}).join('')}
+</div>`;
+}
+
 function renderForecast(){
   const plants=totalPlants();
   const now=new Date();
@@ -1458,39 +1499,21 @@ function saveSection(id){
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
-// SEASON
-function showEditSeason(id){
-  const s=id?(db.seasons||[]).find(x=>x.id===id):null;
-  modal(`
-<div class="fg"><label class="fl">Season name</label><input id="f-snn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Kharif 2025"/></div>
-<div class="fg"><label class="fl">Start month</label><input id="f-ss" type="month" value="${s?.start||''}"/></div>
-<div class="fg"><label class="fl">End month</label><input id="f-se" type="month" value="${s?.end||''}"/></div>
-<div class="fg"><label class="fl">Notes</label><input id="f-snn2" type="text" value="${esc(s?.notes||'')}" placeholder="Any notes…"/></div>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSeason('${id||''}')">Save</button></div>`,s?'Edit season':'Add season');
-}
-function saveSeason(id){
-  const name=document.getElementById('f-snn').value.trim();if(!name)return;
-  const data={name,start:document.getElementById('f-ss').value,end:document.getElementById('f-se').value,notes:document.getElementById('f-snn2').value.trim(),updatedAt:Date.now()};
-  if(!db.seasons)db.seasons=[];
-  if(id){const i=db.seasons.findIndex(x=>x.id===id);if(i>=0)db.seasons[i]={...db.seasons[i],...data};}
-  else db.seasons.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
-}
+// SEASON — removed
 
 // YIELD
 function showEditYield(id){
   const y=id?db.yields.find(x=>x.id===id):null;
   modal(`
 <div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
-<div class="fg"><label class="fl">Season</label><select id="f-yse">${seaOpts('No season')}</select></div>
 <div class="fg"><label class="fl">Month</label><input id="f-yd" type="month" value="${y?.date||new Date().toISOString().slice(0,7)}"/></div>
 <div class="fg"><label class="fl">Yield (kg)</label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveYield('${id||''}')">Save</button></div>`,y?'Edit yield':'Add yield');
-  if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;const se=document.getElementById('f-yse');if(se&&y.seasonId)se.value=y.seasonId;}
+  if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;}
 }
 function saveYield(id){
   const qty=parseFloat(document.getElementById('f-yq').value);if(!qty)return;
-  const data={sectionId:document.getElementById('f-ys').value||null,seasonId:document.getElementById('f-yse').value||null,date:document.getElementById('f-yd').value,qty,updatedAt:Date.now()};
+  const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
@@ -1507,13 +1530,12 @@ function showEditExpense(id){
 <div class="fg"><label class="fl">Amount (₹)</label><input id="f-ea" type="number" value="${e?.amount||''}" placeholder="5000"/></div>
 <div class="fg"><label class="fl">Date</label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-es">${secOpts()}</select></div>
-<div class="fg"><label class="fl">Season (optional)</label><select id="f-ese">${seaOpts()}</select></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveExpense('${id||''}')">Save</button></div>`,e?'Edit expense':'Add expense');
-  if(e){const s=document.getElementById('f-es');if(s&&e.sectionId)s.value=e.sectionId;const se=document.getElementById('f-ese');if(se&&e.seasonId)se.value=e.seasonId;}
+  if(e){const s=document.getElementById('f-es');if(s&&e.sectionId)s.value=e.sectionId;}
 }
 function saveExpense(id){
   const amount=parseFloat(document.getElementById('f-ea').value),desc=document.getElementById('f-ed').value.trim();if(!amount||!desc)return;
-  const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,seasonId:document.getElementById('f-ese').value||null,updatedAt:Date.now()};
+  const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,updatedAt:Date.now()};
   if(id){const i=db.expenses.findIndex(x=>x.id===id);if(i>=0)db.expenses[i]={...db.expenses[i],...data};}
   else db.expenses.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
@@ -1531,14 +1553,13 @@ function showEditIncome(id){
 </div>
 <div class="fg"><label class="fl">Buyer / market</label><input id="f-ib" type="text" value="${esc(i?.buyer||'')}" placeholder="Vandanmedu auction"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-is">${secOpts()}</select></div>
-<div class="fg"><label class="fl">Season (optional)</label><select id="f-ise">${seaOpts()}</select></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-ino" type="text" value="${esc(i?.notes||'')}" placeholder="Grade, batch…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveIncome('${id||''}')">Save</button></div>`,i?'Edit income':'Add income / sale');
-  if(i){const s=document.getElementById('f-is');if(s&&i.sectionId)s.value=i.sectionId;const se=document.getElementById('f-ise');if(se&&i.seasonId)se.value=i.seasonId;}
+  if(i){const s=document.getElementById('f-is');if(s&&i.sectionId)s.value=i.sectionId;}
 }
 function saveIncome(id){
   const qty=parseFloat(document.getElementById('f-iq').value),pricePerKg=parseFloat(document.getElementById('f-ip').value);if(!qty||!pricePerKg)return;
-  const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,seasonId:document.getElementById('f-ise').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
+  const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.incomes.findIndex(x=>x.id===id);if(i>=0)db.incomes[i]={...db.incomes[i],...data};}
   else db.incomes.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
@@ -1587,6 +1608,30 @@ async function saveGeminiKey(){
     showToast('API key saved securely ✓');
     setTimeout(()=>fetchAIInsights(true),400);
   }catch(e){showToast('Save failed: '+e.message);}
+}
+
+// DRYING
+function showEditDrying(id){
+  const d=id?db.dryings.find(x=>x.id===id):null;
+  modal(`
+<div class="fg"><label class="fl">Date</label><input id="f-dd" type="date" value="${d?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Raw green input (kg)</label><input id="f-dr" type="number" value="${d?.rawQty||''}" placeholder="400"/></div>
+<div class="fg"><label class="fl">Dried output (kg)</label><input id="f-do" type="number" value="${d?.driedQty||''}" placeholder="95"/></div>
+<div class="fg"><label class="fl">Drying method</label>
+<select id="f-dm"><option value="sun" ${(d?.method||'sun')==='sun'?'selected':''}>Sun drying</option><option value="mechanical" ${d?.method==='mechanical'?'selected':''}>Mechanical dryer</option><option value="shade" ${d?.method==='shade'?'selected':''}>Shade drying</option></select>
+</div>
+<div class="fg"><label class="fl">Duration (days)</label><input id="f-ddays" type="number" value="${d?.days||''}" placeholder="7"/></div>
+<div class="fg"><label class="fl">Notes</label><input id="f-dn" type="text" value="${esc(d?.notes||'')}" placeholder="Grade, batch ref…"/></div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveDrying('${id||''}')">Save</button></div>`,d?'Edit drying record':'Add drying record');
+}
+function saveDrying(id){
+  const rawQty=parseFloat(document.getElementById('f-dr').value),driedQty=parseFloat(document.getElementById('f-do').value);
+  if(!rawQty||!driedQty)return;
+  const data={date:document.getElementById('f-dd').value,rawQty,driedQty,method:document.getElementById('f-dm').value,days:parseInt(document.getElementById('f-ddays').value)||null,notes:document.getElementById('f-dn').value.trim(),updatedAt:Date.now()};
+  if(!db.dryings)db.dryings=[];
+  if(id){const i=db.dryings.findIndex(x=>x.id===id);if(i>=0)db.dryings[i]={...db.dryings[i],...data};}
+  else db.dryings.push({id:uid(),createdAt:Date.now(),...data});
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
 function showPassphraseSetup(){
@@ -1827,7 +1872,7 @@ function confirmClearLocal(){
 }
 function doClearLocal(){
   localStorage.removeItem(DB_KEY);
-  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
   closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
 }
 
@@ -1852,7 +1897,7 @@ function setTab(tab){
 }
 function render(){
   const el=document.getElementById('main-content');if(!el)return;
-  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast,settings:renderSettings};
+  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,drying:renderDrying,forecast:renderForecast,settings:renderSettings};
   el.innerHTML=(map[S.tab]||renderDashboard)();
   if(S.tab==='settings') setThemePref(resolveTheme());
 }
