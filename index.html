@@ -711,21 +711,157 @@ function renderSections(){
 }
 
 // ── YIELD ─────────────────────────────────────────────────────────────────────
+// ── CHART HELPERS ─────────────────────────────────────────────────────────────
+// Pure SVG charts — no libraries, theme-aware via CSS vars
+
+function svgBar(data, opts={}){
+  // data: [{label, value, color?, sub?}]
+  const W=opts.w||460, H=opts.h||180, PAD={t:10,r:12,b:36,l:44};
+  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+  const max=Math.max(...data.map(d=>d.value),1);
+  const bW=Math.max(4, Math.floor(cW/data.length)-4);
+  const gap=(cW-bW*data.length)/(data.length+1);
+  // Y grid lines
+  const ticks=4;
+  let grid='', xlabels='', bars='', ylabels='';
+  for(let i=0;i<=ticks;i++){
+    const y=PAD.t+cH*(1-i/ticks);
+    const val=Math.round(max*i/ticks);
+    grid+=`<line x1="${PAD.l}" x2="${W-PAD.r}" y1="${y}" y2="${y}" stroke="var(--bor)" stroke-width="1"/>`;
+    ylabels+=`<text x="${PAD.l-5}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--tx3)">${opts.yFmt?opts.yFmt(val):val}</text>`;
+  }
+  data.forEach((d,i)=>{
+    const x=PAD.l+gap*(i+1)+bW*i;
+    const bH=Math.max(2,Math.round((d.value/max)*cH));
+    const y=PAD.t+cH-bH;
+    const col=d.color||'var(--gm)';
+    bars+=`<rect x="${x}" y="${y}" width="${bW}" height="${bH}" rx="3" fill="${col}" opacity="0.92"/>`;
+    // value label on top if bar is tall enough
+    if(bH>18) bars+=`<text x="${x+bW/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="var(--tx3)" font-weight="600">${opts.vFmt?opts.vFmt(d.value):d.value}</text>`;
+    // x label
+    const lbl=d.label.length>6?d.label.slice(0,6):d.label;
+    xlabels+=`<text x="${x+bW/2}" y="${H-PAD.b+14}" text-anchor="middle" font-size="9" fill="var(--tx3)">${lbl}</text>`;
+    if(d.sub) xlabels+=`<text x="${x+bW/2}" y="${H-PAD.b+24}" text-anchor="middle" font-size="8" fill="var(--tx3)">${d.sub}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible">${grid}${ylabels}${bars}${xlabels}</svg>`;
+}
+
+function svgLine(series, opts={}){
+  // series: [{label, values:[{x,y}], color}]  x=label string, y=number
+  const W=opts.w||460, H=opts.h||160, PAD={t:14,r:12,b:36,l:48};
+  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+  const allY=series.flatMap(s=>s.values.map(v=>v.y));
+  const maxY=Math.max(...allY,1), minY=0;
+  const xLabels=series[0]?.values.map(v=>v.x)||[];
+  const nX=xLabels.length; if(nX<2) return '';
+  const xStep=cW/(nX-1);
+  const py=v=>PAD.t+cH*(1-(v-minY)/(maxY-minY));
+  const px=i=>PAD.l+i*xStep;
+  const ticks=4;
+  let grid='',ylabels='',xlabels='',paths='',dots='',areas='';
+  for(let i=0;i<=ticks;i++){
+    const y=PAD.t+cH*(1-i/ticks);
+    const val=Math.round(maxY*i/ticks);
+    grid+=`<line x1="${PAD.l}" x2="${W-PAD.r}" y1="${y}" y2="${y}" stroke="var(--bor)" stroke-width="1"/>`;
+    ylabels+=`<text x="${PAD.l-5}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--tx3)">${opts.yFmt?opts.yFmt(val):val}</text>`;
+  }
+  xLabels.forEach((lbl,i)=>{
+    if(i%Math.max(1,Math.floor(nX/6))===0||i===nX-1)
+      xlabels+=`<text x="${px(i)}" y="${H-PAD.b+13}" text-anchor="middle" font-size="9" fill="var(--tx3)">${lbl.length>7?lbl.slice(0,7):lbl}</text>`;
+  });
+  series.forEach(s=>{
+    const pts=s.values;
+    const col=s.color||'var(--gm)';
+    const d='M'+pts.map((p,i)=>`${px(i)},${py(p.y)}`).join('L');
+    // area fill
+    const areaD=d+`L${px(pts.length-1)},${PAD.t+cH}L${px(0)},${PAD.t+cH}Z`;
+    areas+=`<path d="${areaD}" fill="${col}" opacity="0.08"/>`;
+    paths+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    pts.forEach((p,i)=>{dots+=`<circle cx="${px(i)}" cy="${py(p.y)}" r="3" fill="${col}" stroke="var(--sur)" stroke-width="1.5"/>`;});
+  });
+  // legend
+  let legend='';
+  if(series.length>1) series.forEach((s,i)=>{
+    legend+=`<circle cx="${PAD.l+i*80+6}" cy="${H-5}" r="4" fill="${s.color||'var(--gm)'}"/>`;
+    legend+=`<text x="${PAD.l+i*80+14}" y="${H-1}" font-size="9" fill="var(--tx2)">${s.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H+(series.length>1?8:0)}" width="100%" style="display:block;overflow:visible">${grid}${ylabels}${areas}${paths}${dots}${xlabels}${legend}</svg>`;
+}
+
+function svgDonut(slices, opts={}){
+  // slices: [{label, value, color}]
+  const total=slices.reduce((s,x)=>s+x.value,0); if(!total) return '';
+  const R=opts.r||54, r=opts.inner||32, CX=opts.cx||70, CY=opts.cy||70, W=opts.w||280, H=opts.h||140;
+  let angle=-Math.PI/2, paths='', legend='';
+  slices.forEach((sl,i)=>{
+    const sweep=(sl.value/total)*Math.PI*2;
+    const x1=CX+R*Math.cos(angle), y1=CY+R*Math.sin(angle);
+    const x2=CX+R*Math.cos(angle+sweep), y2=CY+R*Math.sin(angle+sweep);
+    const xi1=CX+r*Math.cos(angle), yi1=CY+r*Math.sin(angle);
+    const xi2=CX+r*Math.cos(angle+sweep), yi2=CY+r*Math.sin(angle+sweep);
+    const lg=sweep>Math.PI?1:0;
+    const d=`M${xi1},${yi1} L${x1},${y1} A${R},${R},0,${lg},1,${x2},${y2} L${xi2},${yi2} A${r},${r},0,${lg},0,${xi1},${yi1}Z`;
+    paths+=`<path d="${d}" fill="${sl.color}" opacity="0.9"/>`;
+    const pct=Math.round(sl.value/total*100);
+    const ly=CX+130+(i%4)*28; // stack legend right side
+    const lrow=Math.floor(i/1);
+    legend+=`<rect x="${CX+R+14}" y="${14+lrow*20}" width="10" height="10" rx="2" fill="${sl.color}"/>`;
+    legend+=`<text x="${CX+R+28}" y="${22+lrow*20}" font-size="10" fill="var(--tx2)" font-weight="500">${sl.label}</text>`;
+    legend+=`<text x="${W-8}" y="${22+lrow*20}" text-anchor="end" font-size="10" fill="var(--tx3)">${pct}%</text>`;
+    angle+=sweep;
+  });
+  // center total
+  const cLabel=opts.centerLabel||'';
+  const cSub=opts.centerSub||'';
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><circle cx="${CX}" cy="${CY}" r="${R+2}" fill="var(--sur2)"/>${paths}<text x="${CX}" y="${CY-6}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--tx)">${cLabel}</text><text x="${CX}" y="${CY+10}" text-anchor="middle" font-size="9" fill="var(--tx3)">${cSub}</text>${legend}</svg>`;
+}
+
+// ── YIELD ─────────────────────────────────────────────────────────────────────
 function renderYield(){
-  const byMonth={};db.yields.forEach(y=>byMonth[y.date]=(byMonth[y.date]||0)+y.qty);
+  // Build monthly totals
+  const byMonth={};
+  db.yields.forEach(y=>byMonth[y.date]=(byMonth[y.date]||0)+y.qty);
   const months=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0]));
   const maxY=Math.max(...Object.values(byMonth),1);
+
+  // By section donut data
+  const bySec={};
+  db.yields.forEach(y=>{const k=y.sectionId||'__all';bySec[k]=(bySec[k]||0)+y.qty;});
+  const secColors=['var(--gm)','var(--ad)','var(--bd)','var(--pd)','var(--rd)','var(--gl)'];
+  const secSlices=Object.entries(bySec).map(([id,v],i)=>({label:secName(id).slice(0,12),value:v,color:secColors[i%secColors.length]}));
+
+  // Line chart data — monthly totals
+  const lineData=months.map(([m,q])=>({x:m.slice(2),y:q})); // trim year prefix for display
+
+  // Totals
+  const totalKg=db.yields.reduce((s,y)=>s+(y.qty||0),0);
+  const avgMo=months.length?Math.round(totalKg/months.length):0;
+  const peakMo=months.length?months.reduce((a,b)=>b[1]>a[1]?b:a):null;
+
   return`
 <div class="card">
-  <div class="ct">Monthly yield</div>
-  ${months.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15l4-5 3 2.5 4-6 3 3"/></svg><br>No records yet</div>`:
-  months.map(([m,q])=>`
-  <div class="br-row">
-    <div class="br-lbl">${m}</div>
-    <div class="br-trk"><div class="br-fill" style="width:${Math.round(q/maxY*100)}%"></div></div>
-    <div class="br-val">${q} kg</div>
-  </div>`).join('')}
-  <button class="add-btn" onclick="showEditYield(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
+  <div class="ct">Yield overview</div>
+  <div class="mg" style="margin-bottom:14px">
+    <div class="met g"><div class="ml">Total yield</div><div class="mv">${totalKg} kg</div><div class="ms">${db.yields.length} records</div></div>
+    <div class="met b"><div class="ml">Monthly avg</div><div class="mv">${avgMo} kg</div><div class="ms">over ${months.length} months</div></div>
+    <div class="met"><div class="ml">Best month</div><div class="mv" style="font-size:14px">${peakMo?peakMo[0]:'—'}</div><div class="ms">${peakMo?peakMo[1]+' kg':''}</div></div>
+    <div class="met a"><div class="ml">Yield/plant</div><div class="mv" style="font-size:16px">${totalPlants()>0?(totalKg/totalPlants()).toFixed(2):0}</div><div class="ms">kg/plant</div></div>
+  </div>
+  ${months.length>=2?`
+  <div style="margin-bottom:4px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Yield over time (kg)</div>
+    ${svgLine([{label:'Yield',values:lineData,color:'var(--gm)'}],{h:150,yFmt:v=>v})}
+  </div>`:months.length>0?`
+  <div style="margin-bottom:4px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Yield by month (kg)</div>
+    ${svgBar(months.map(([m,q])=>({label:m.slice(2),value:q,color:'var(--gm)'})),{h:150})}
+  </div>`:''}
+  ${secSlices.length>1?`
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bor)">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">By section</div>
+    ${svgDonut(secSlices,{centerLabel:totalKg+'kg',centerSub:'total',w:290,h:Math.min(40+secSlices.length*20,150)})}
+  </div>`:''}
+  <button class="add-btn" onclick="showEditYield(null)" style="margin-top:14px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add yield record</button>
 </div>
 <div class="card">
   <div class="ct">All records</div>
@@ -750,10 +886,54 @@ function renderYield(){
 function renderExpenses(){
   const t=S.expTab,filtered=t==='all'?db.expenses:db.expenses.filter(e=>e.category===t);
   const total=filtered.reduce((s,e)=>s+e.amount,0);
+
+  // Category breakdown donut
+  const byCat={};
+  db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
+  const catColors={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx2)'};
+  const catSlices=Object.entries(byCat).filter(([,v])=>v>0).map(([k,v])=>({label:CL[k]||k,value:v,color:catColors[k]||'var(--tx3)'}));
+
+  // Monthly trend — all expenses
+  const byMo={};
+  db.expenses.forEach(e=>{if(e.date){const m=e.date.slice(0,7);byMo[m]=(byMo[m]||0)+e.amount;}});
+  const moEntries=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  // Monthly trend — filtered (if a category tab is active)
+  const byMoFiltered={};
+  filtered.forEach(e=>{if(e.date){const m=e.date.slice(0,7);byMoFiltered[m]=(byMoFiltered[m]||0)+e.amount;}});
+  const moFiltered=Object.entries(byMoFiltered).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
+  const avgMoExp=moEntries.length?Math.round(totalAll/moEntries.length):0;
+  const peakMoExp=moEntries.length?moEntries.reduce((a,b)=>b[1]>a[1]?b:a):null;
+
   return`
+<div class="card">
+  <div class="ct">Expense overview</div>
+  <div class="mg" style="margin-bottom:14px">
+    <div class="met r"><div class="ml">Total spent</div><div class="mv">${fc(totalAll)}</div><div class="ms">${db.expenses.length} entries</div></div>
+    <div class="met"><div class="ml">Monthly avg</div><div class="mv" style="font-size:15px">${fc(avgMoExp)}</div><div class="ms">over ${moEntries.length} months</div></div>
+    <div class="met a"><div class="ml">Highest month</div><div class="mv" style="font-size:13px">${peakMoExp?peakMoExp[0]:'—'}</div><div class="ms">${peakMoExp?fc(peakMoExp[1]):''}</div></div>
+    <div class="met b"><div class="ml">Top category</div><div class="mv" style="font-size:13px">${catSlices.length?catSlices.sort((a,b)=>b.value-a.value)[0].label:'—'}</div></div>
+  </div>
+  ${catSlices.length>1?`
+  <div style="margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">By category</div>
+    ${svgDonut(catSlices,{centerLabel:fc(totalAll).replace('₹',''),centerSub:'total ₹',w:290,h:Math.min(40+catSlices.length*20,150)})}
+  </div>`:''}
+  ${moEntries.length>=2?`
+  <div style="padding-top:14px;border-top:1px solid var(--bor)">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Monthly spend trend</div>
+    ${svgLine([{label:'Expenses',values:moEntries.map(([m,v])=>({x:m.slice(2),y:v})),color:'var(--rd)'}],{h:140,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+  </div>`:''}
+</div>
 <div class="card">
   <div class="ct">Expenses</div>
   <div class="tabs">${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button class="tab ${t===c?'active':''}" onclick="S.expTab='${c}';render()">${c==='all'?'All':CL[c]}</button>`).join('')}</div>
+  ${t!=='all'&&moFiltered.length>=2?`
+  <div style="margin-bottom:12px">
+    ${svgBar(moFiltered.map(([m,v])=>({label:m.slice(2),value:v,color:catColors[t]||'var(--gm)'})),{h:110,yFmt:v=>'₹'+Math.round(v/1000)+'k',vFmt:v=>Math.round(v/1000)+'k'})}
+  </div>`:''}
   <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;font-weight:600">Total: ${fc(total)}</div>
   ${filtered.length===0?'<div class="empty">No expenses here</div>':[...filtered].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`
   <div class="row">
@@ -779,15 +959,62 @@ function renderExpenses(){
 // ── INCOME ────────────────────────────────────────────────────────────────────
 function renderIncome(){
   const total=totalInc(),kg=db.incomes.reduce((s,i)=>s+i.qty,0),avg=kg>0?Math.round(total/kg):0;
+
+  // Monthly income trend
+  const byMo={};
+  db.incomes.forEach(i=>{if(i.date){const m=i.date.slice(0,7);byMo[m]=(byMo[m]||0)+(i.qty||0)*(i.pricePerKg||0);}});
+  const moInc=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  // Monthly kg sold
+  const byMoKg={};
+  db.incomes.forEach(i=>{if(i.date){const m=i.date.slice(0,7);byMoKg[m]=(byMoKg[m]||0)+(i.qty||0);}});
+  const moKg=Object.entries(byMoKg).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  // Income vs expense monthly overlay (only months that have both)
+  const allMos=new Set([...Object.keys(byMo),...Object.keys(
+    Object.fromEntries(db.expenses.map(e=>[e.date?.slice(0,7)||'',1]))
+  )].filter(Boolean));
+  const expByMo={};
+  db.expenses.forEach(e=>{if(e.date){const m=e.date.slice(0,7);expByMo[m]=(expByMo[m]||0)+e.amount;}});
+  const overlapMos=[...allMos].sort();
+  const hasOverlap=overlapMos.length>=2;
+
+  // By buyer donut
+  const byBuyer={};
+  db.incomes.forEach(i=>{const k=i.buyer||'Unknown';byBuyer[k]=(byBuyer[k]||0)+(i.qty||0)*(i.pricePerKg||0);});
+  const buyerColors=['var(--gm)','var(--bd)','var(--ad)','var(--pd)','var(--gl)'];
+  const buyerSlices=Object.entries(byBuyer).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v],i)=>({label:k.slice(0,12),value:v,color:buyerColors[i%buyerColors.length]}));
+
+  const netProfit=total-totalExp();
+  const peakMo=moInc.length?moInc.reduce((a,b)=>b[1]>a[1]?b:a):null;
+
   return`
 <div class="card">
-  <div class="ct">Income summary</div>
-  <div class="mg">
-    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div></div>
+  <div class="ct">Income overview</div>
+  <div class="mg" style="margin-bottom:14px">
+    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div><div class="ms">${db.incomes.length} sales</div></div>
     <div class="met b"><div class="ml">Kg sold</div><div class="mv">${kg} kg</div></div>
-    <div class="met a"><div class="ml">Avg sell price</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div><div class="ms">per kg</div></div>
-    <div class="met p"><div class="ml">Net profit</div><div class="mv" style="font-size:15px">${fc(total-totalExp())}</div></div>
+    <div class="met a"><div class="ml">Avg price/kg</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div></div>
+    <div class="met ${netProfit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv" style="font-size:15px">${fc(netProfit)}</div></div>
   </div>
+  ${moInc.length>=2?`
+  <div style="margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Monthly income</div>
+    ${svgLine([{label:'Income',values:moInc.map(([m,v])=>({x:m.slice(2),y:v})),color:'var(--gm)'}],{h:150,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+  </div>`:''}
+  ${hasOverlap?`
+  <div style="margin-bottom:14px;padding-top:14px;border-top:1px solid var(--bor)">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Income vs expenses</div>
+    ${svgLine([
+      {label:'Income',values:overlapMos.map(m=>({x:m.slice(2),y:byMo[m]||0})),color:'var(--gm)'},
+      {label:'Expenses',values:overlapMos.map(m=>({x:m.slice(2),y:expByMo[m]||0})),color:'var(--rd)'}
+    ],{h:160,yFmt:v=>'₹'+Math.round(v/1000)+'k'})}
+  </div>`:''}
+  ${buyerSlices.length>1?`
+  <div style="padding-top:14px;border-top:1px solid var(--bor)">
+    <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Revenue by buyer</div>
+    ${svgDonut(buyerSlices,{centerLabel:fc(total).replace('₹',''),centerSub:'total ₹',w:290,h:Math.min(40+buyerSlices.length*20,160)})}
+  </div>`:''}
 </div>
 <div class="card">
   <div class="ct">Income records</div>
@@ -809,6 +1036,7 @@ function renderIncome(){
   <button class="add-btn" onclick="showEditIncome(null)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
 </div>`;
 }
+
 
 // ── FORECAST ──────────────────────────────────────────────────────────────────
 function renderForecast(){
