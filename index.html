@@ -99,34 +99,8 @@ input:focus,select:focus{outline:none;border-color:var(--gm)}
 const DB_KEY='cf_data_v3',CFG_KEY='cf_config_v2';
 let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={
-  sections:[
-    {id:'s1',name:'Upper Block A',plants:120,age:3,notes:'Near stream',createdAt:1700000001000},
-    {id:'s2',name:'Lower Block B',plants:85,age:5,notes:'Good shade',createdAt:1700000002000},
-    {id:'s3',name:'Hillside C',plants:95,age:2,notes:'New plantation',createdAt:1700000003000},
-  ],
-  seasons:[
-    {id:'sea1',name:'Kharif 2024',start:'2024-07',end:'2024-11',notes:'Main season',createdAt:1700000001000},
-    {id:'sea2',name:'Rabi 2024-25',start:'2024-12',end:'2025-03',notes:'',createdAt:1700000002000},
-  ],
-  yields:[
-    {id:'y1',sectionId:'s1',seasonId:'sea1',date:'2024-10',qty:42,createdAt:1700000001000},
-    {id:'y2',sectionId:'s2',seasonId:'sea1',date:'2024-10',qty:38,createdAt:1700000002000},
-    {id:'y3',sectionId:'s3',seasonId:'sea1',date:'2024-10',qty:18,createdAt:1700000003000},
-    {id:'y4',sectionId:'s1',seasonId:'sea2',date:'2025-01',qty:15,createdAt:1700000004000},
-    {id:'y5',sectionId:'s2',seasonId:'sea2',date:'2025-01',qty:12,createdAt:1700000005000},
-  ],
-  expenses:[
-    {id:'e1',date:'2025-02-10',category:'labor',desc:'Harvesting labor',amount:8500,sectionId:null,seasonId:'sea2',createdAt:1700000001000},
-    {id:'e2',date:'2025-02-05',category:'pesticide',desc:'Fungicide spray',amount:2200,sectionId:'s1',seasonId:'sea2',createdAt:1700000002000},
-    {id:'e3',date:'2025-01-20',category:'rawmat',desc:'Fertilizer NPK',amount:4800,sectionId:null,seasonId:'sea2',createdAt:1700000003000},
-    {id:'e4',date:'2025-01-15',category:'crop',desc:'Seedlings',amount:3500,sectionId:'s3',seasonId:'sea2',createdAt:1700000004000},
-    {id:'e5',date:'2024-12-01',category:'labor',desc:'Weeding',amount:5000,sectionId:null,seasonId:'sea2',createdAt:1700000005000},
-  ],
-  incomes:[
-    {id:'i1',date:'2025-02-12',qty:98,pricePerKg:4200,buyer:'Local trader',notes:'Kharif harvest',sectionId:null,seasonId:'sea1',createdAt:1700000001000},
-    {id:'i2',date:'2025-01-20',qty:27,pricePerKg:4050,buyer:'Vandanmedu auction',notes:'Rabi',sectionId:null,seasonId:'sea2',createdAt:1700000002000},
-  ],
-  marketPrice:2450,marketPriceDate:null,updatedAt:Date.now()
+  sections:[],seasons:[],yields:[],expenses:[],incomes:[],
+  marketPrice:null,marketPriceDate:null,updatedAt:Date.now()
 };
 let S={tab:'dashboard',expTab:'all',syncing:false,oauthToken:null};
 
