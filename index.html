@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
 <meta name="theme-color" content="#2E7D32"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="V-Plantations"/>
 <title>V-Plantations</title>
 <style>
@@ -205,8 +205,13 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
 /* MISC */
 .pk{font-size:10px;background:var(--gbg);color:var(--gm);padding:2px 7px;border-radius:8px;margin-left:4px;font-weight:700;border:1px solid var(--gbr)}
 .slog{font-size:11px;color:var(--tx3);margin-top:8px;font-style:italic;text-align:center}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 .section-chip{display:inline-flex;align-items:center;background:var(--sur2);border:1px solid var(--bor);border-radius:20px;padding:2px 8px;font-size:11px;color:var(--tx2);gap:3px}
 .price-source{font-size:10px;color:var(--tx3);margin-top:4px}
+
+/* SKELETON LOADING */
+.skeleton{background:linear-gradient(90deg,var(--sur2) 25%,var(--bor) 50%,var(--sur2) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 </style>
 </head>
 <body>
@@ -586,6 +591,244 @@ function deleteItem(type,id){
   setTimeout(()=>triggerSync(false),500);
 }
 
+// ── AI INSIGHTS ENGINE (Gemini) ───────────────────────────────────────────────
+const INSIGHTS_KEY='vp_insights_v1';
+const INSIGHTS_TTL=24*60*60*1000;
+const KEYS_DRIVE_FILE='vplantations_keys.enc';
+
+function loadInsightsCache(){try{const d=localStorage.getItem(INSIGHTS_KEY);return d?JSON.parse(d):null;}catch(e){return null;}}
+function saveInsightsCache(data){try{localStorage.setItem(INSIGHTS_KEY,JSON.stringify({ts:Date.now(),...data}));}catch(e){}}
+function insightsCacheValid(){
+  const d=loadInsightsCache();
+  if(!d||(Date.now()-d.ts)>=INSIGHTS_TTL)return null;
+  // Check same calendar day (IST = UTC+5:30)
+  const tz=5.5*3600000;
+  const cacheDay=new Date(d.ts+tz).toISOString().slice(0,10);
+  const todayDay=new Date(Date.now()+tz).toISOString().slice(0,10);
+  return cacheDay===todayDay?d:null;
+}
+
+// ── GEMINI KEY — stored encrypted in Drive, never in plain localStorage ───────
+async function loadGeminiKey(){
+  // Try memory first
+  if(S.geminiKey)return S.geminiKey;
+  // Try Drive if authed
+  if(!cfg.passphrase||!navigator.onLine)return null;
+  try{
+    const f=await findNamedFile(KEYS_DRIVE_FILE);
+    if(!f)return null;
+    const raw=await readFile(f.id);
+    const data=await decrypt(raw,cfg.passphrase);
+    S.geminiKey=data.geminiKey||null;
+    return S.geminiKey;
+  }catch(e){return null;}
+}
+
+async function saveGeminiKeyToDrive(key){
+  if(!cfg.passphrase)throw new Error('Set up sync passphrase first');
+  await getOAuthToken();
+  const data={geminiKey:key,savedAt:Date.now()};
+  const enc=await encrypt(data,cfg.passphrase);
+  const existing=await findNamedFile(KEYS_DRIVE_FILE);
+  if(existing)await writeFile(existing.id,enc);
+  else await writeNamedFile(null,KEYS_DRIVE_FILE,enc);
+  S.geminiKey=key;
+}
+
+// ── GEMINI FETCH ──────────────────────────────────────────────────────────────
+async function fetchAIInsights(force=false){
+  if(S.fetchingInsights)return;
+  const cached=insightsCacheValid();
+  if(cached&&!force){renderInsightsCard(cached);return;}
+  const key=await loadGeminiKey();
+  if(!key){renderInsightsSetup();return;}
+  S.fetchingInsights=true;
+  renderInsightsLoading();
+  try{
+    const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+    const prompt=`You are an agricultural commodity analyst specialising in cardamom. Today is ${today}.
+
+Using your knowledge of global cardamom markets, provide a structured market intelligence briefing for an Indian cardamom farmer in Thopramkudy, Idukki district, Kerala.
+
+Cover these areas with specific, factual information — no speculation or hallucination. If you are not confident about a specific fact, say "data unavailable" rather than guessing:
+1. Production outlook — Guatemala (world's largest exporter ~70% share) and India (Kerala/Karnataka)
+2. Weather or crop conditions affecting supply
+3. Export demand from key buyers (Middle East, Europe, Southeast Asia)
+4. Recent price trend direction at Indian auction centres (Vandanmedu, Bodinayakanur)
+5. Any trade policy, currency, or geopolitical factor relevant to cardamom prices
+
+Respond ONLY with a valid JSON object — no markdown, no explanation, no text outside the JSON:
+{
+  "headline": "One sentence capturing the single most important market development right now",
+  "outlook": "bullish" | "bearish" | "neutral" | "volatile",
+  "outlookReason": "One sentence explaining the outlook in plain language",
+  "keyFactors": [
+    {
+      "icon": "relevant emoji",
+      "title": "Short factor title",
+      "detail": "2-3 sentences with specific facts. Write 'Data unavailable' if uncertain.",
+      "impact": "positive" | "negative" | "neutral"
+    }
+  ],
+  "priceOutlook": "2-3 sentences on expected price direction for next 3-6 months with reasoning",
+  "farmerAdvice": "1-2 sentences of specific actionable advice for an Idukki cardamom farmer right now",
+  "fetchedDate": "${today}",
+  "confidence": "high" | "medium" | "low"
+}
+
+Provide exactly 4-5 keyFactors. Be factual and concise.`;
+
+    const res=await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({
+         contents:[{parts:[{text:prompt}]}],
+         generationConfig:{temperature:0.1,maxOutputTokens:1200},
+         safetySettings:[
+           {category:'HARM_CATEGORY_HARASSMENT',threshold:'BLOCK_NONE'},
+           {category:'HARM_CATEGORY_HATE_SPEECH',threshold:'BLOCK_NONE'}
+         ]
+       }),
+       signal:AbortSignal.timeout(20000)
+      }
+    );
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Gemini API error '+res.status);}
+    const json=await res.json();
+    const text=json.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    if(!text)throw new Error('Empty response from Gemini');
+    const clean=text.replace(/```json|```/g,'').trim();
+    let insights;
+    try{insights=JSON.parse(clean);}
+    catch(e){throw new Error('Could not parse Gemini response — try again');}
+    saveInsightsCache(insights);
+    renderInsightsCard({...insights,ts:Date.now()});
+    showToast('Insights updated ✓');
+  }catch(e){
+    console.error('Gemini insights error:',e);
+    const el=document.getElementById('insights-card-body');
+    if(el)el.innerHTML=insightsErrorHTML(e.message);
+    showToast('Insights failed: '+e.message);
+  }
+  S.fetchingInsights=false;
+}
+
+// ── 5AM IST SCHEDULER ────────────────────────────────────────────────────────
+function scheduleInsightsFetch(){
+  const IST_OFFSET=5.5*3600000;
+  const now=Date.now();
+  const istNow=new Date(now+IST_OFFSET);
+  const target=new Date(istNow);
+  target.setUTCHours(23-5,30,0,0); // 5:00 AM IST = 23:30 UTC previous day... compute properly:
+  // 5:00 AM IST = 05*60+00 = 300 mins from midnight IST
+  const istMidnight=new Date(istNow);
+  istMidnight.setUTCHours(0-5,-(30),0,0); // back to UTC midnight of IST day
+  // Simpler: next 5am IST in ms
+  const istHour=istNow.getUTCHours()+5+(istNow.getUTCMinutes()>=30?1:0); // approx IST hour
+  // Use a clean approach: compute ms until next 5:00 AM IST
+  const nowIST=now+IST_OFFSET; // ms in IST "UTC"
+  const msInDay=nowIST%(86400000);
+  const target5am=5*3600000; // 5am in ms from midnight
+  let msUntil=target5am-msInDay;
+  if(msUntil<=0)msUntil+=86400000; // already past 5am, wait until tomorrow
+  setTimeout(()=>{
+    fetchAIInsights(false);
+    setInterval(()=>fetchAIInsights(false),INSIGHTS_TTL);
+  },msUntil);
+}
+
+// ── RENDER HELPERS ────────────────────────────────────────────────────────────
+function renderInsightsSetup(){
+  const el=document.getElementById('insights-card-body');
+  if(!el)return;
+  el.innerHTML=`
+    <p style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:12px">
+      Get daily AI insights on global cardamom markets — Guatemala production, India supply, export demand, price outlook, and advice for Idukki farmers.<br><br>
+      <strong>API key is stored encrypted in your Google Drive</strong> — never in plain text.
+    </p>
+    <button onclick="showGeminiKeySetup()" style="width:100%;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
+      🔑 Set up Gemini API key
+    </button>
+    <p style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:center">Free · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--bd)">Get key at aistudio.google.com</a></p>`;
+}
+
+function renderInsightsLoading(){
+  const el=document.getElementById('insights-card-body');
+  if(!el)return;
+  el.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
+      ${[80,60,100,90,70].map(w=>`<div style="height:12px;width:${w}%;border-radius:6px;background:var(--bor2);animation:pulse 1.4s ease-in-out infinite"></div>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--tx3);text-align:center;margin-top:10px">Gemini is analysing global cardamom markets…</p>`;
+}
+
+function insightsErrorHTML(msg){
+  return`<div class="cbox" style="margin-bottom:10px"><p>${msg||'Failed to load insights'}</p></div>
+    <button onclick="fetchAIInsights(true)" style="width:100%;padding:10px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--gm);cursor:pointer;font-family:inherit">↻ Retry</button>`;
+}
+
+const OUTLOOK_STYLE={
+  bullish:{bg:'var(--gbg)',border:'var(--gbr)',color:'var(--gm)',label:'Bullish ↑'},
+  bearish:{bg:'var(--rbg)',border:'var(--rbr)',color:'var(--rd)',label:'Bearish ↓'},
+  neutral:{bg:'var(--bbg)',border:'var(--bbr)',color:'var(--bd)',label:'Neutral →'},
+  volatile:{bg:'var(--abg)',border:'var(--abr)',color:'var(--ad)',label:'Volatile ↕'},
+};
+const IMPACT_DOT={positive:'var(--gm)',negative:'var(--rd)',neutral:'var(--tx3)'};
+const CONF_LABEL={high:'High confidence',medium:'Medium confidence',low:'Low — verify before acting'};
+
+function renderInsightsCard(d){
+  const el=document.getElementById('insights-card-body');
+  if(!el)return;
+  const ol=OUTLOOK_STYLE[d.outlook]||OUTLOOK_STYLE.neutral;
+  const age=d.ts?Math.round((Date.now()-d.ts)/3600000):0;
+  const ageLabel=age<1?'Just now':age<24?age+'h ago':'Yesterday';
+  const conf=d.confidence||'medium';
+  const factors=(d.keyFactors||[]).map(f=>`
+    <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)">
+      <div style="font-size:20px;flex-shrink:0;line-height:1.4">${f.icon||'📌'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:600;color:var(--tx)">${f.title}</span>
+          <span style="width:7px;height:7px;border-radius:50%;background:${IMPACT_DOT[f.impact]||IMPACT_DOT.neutral};flex-shrink:0;display:inline-block"></span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2);line-height:1.5">${f.detail}</div>
+      </div>
+    </div>`).join('');
+  el.innerHTML=`
+    <div style="background:${ol.bg};border:1.5px solid ${ol.border};border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:${ol.color};background:${ol.border};padding:3px 10px;border-radius:10px">${ol.label}</span>
+        <span style="font-size:11px;color:var(--tx3)">${ageLabel} · ${d.fetchedDate||''}</span>
+        <span style="font-size:10px;color:var(--tx3);margin-left:auto">${CONF_LABEL[conf]||''}</span>
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--tx);line-height:1.4">${d.headline||''}</div>
+      <div style="font-size:12px;color:var(--tx2);margin-top:4px">${d.outlookReason||''}</div>
+    </div>
+    <div style="margin-bottom:12px">${factors}</div>
+    ${d.priceOutlook?`
+    <div style="background:var(--sur2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border:1px solid var(--bor)">
+      <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook · 3–6 months</div>
+      <div style="font-size:13px;color:var(--tx2);line-height:1.5">${d.priceOutlook}</div>
+    </div>`:''}
+    ${d.farmerAdvice?`
+    <div style="background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);padding:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--gm);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">💡 For Idukki farmers</div>
+      <div style="font-size:13px;color:var(--tx);line-height:1.5">${d.farmerAdvice}</div>
+    </div>`:''}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+      <p style="font-size:10px;color:var(--tx3)">Gemini AI · Refreshes daily at 5am IST</p>
+      <button onclick="fetchAIInsights(true)" style="background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;font-family:inherit">↻ Refresh</button>
+    </div>`;
+}
+
+function initInsights(){
+  const cached=insightsCacheValid();
+  if(cached){setTimeout(()=>renderInsightsCard(cached),50);return;}
+  loadGeminiKey().then(key=>{
+    if(key&&navigator.onLine)fetchAIInsights(false);
+    else renderInsightsSetup();
+  });
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard(){
   const inc=totalInc(),exp=totalExp(),profit=inc-exp,plants=totalPlants(),ykg=totalYield();
@@ -594,6 +837,7 @@ function renderDashboard(){
   const bClr={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx3)'};
   const recent=[...db.yields.slice(-3).map(y=>({t:'y',y,ts:y.createdAt})),...db.incomes.slice(-2).map(i=>({t:'i',i,ts:i.createdAt}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
   const hasPrice=db.priceRaw||db.priceDried;
+  const insightsOpen=S.insightsOpen!==false; // default open
   return`
 <div class="pbanner">
   <div class="ct" style="margin-bottom:10px">Market prices — Cardamom
@@ -655,8 +899,25 @@ ${recent.length?`
 </div>`:''}
 
 ${!cfg.passphrase?`<div class="sbox"><h3>⚙️ Set up sync</h3><p>Tap Sync to configure encrypted Google Drive backup.</p></div>`:
-cfg.lastSyncTs?`<p class="slog">Last synced ${new Date(cfg.lastSyncTs).toLocaleString('en-IN')}</p>`:''}`;
+cfg.lastSyncTs?`<p class="slog">Last synced ${new Date(cfg.lastSyncTs).toLocaleString('en-IN')}</p>`:''}
+
+<div class="card" style="margin-bottom:12px">
+  <div onclick="S.insightsOpen=!S.insightsOpen;render()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">🌍</span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--tx)">Market insights</div>
+        <div style="font-size:11px;color:var(--tx3)">Global cardamom · AI-powered · Daily</div>
+      </div>
+    </div>
+    <span style="font-size:18px;color:var(--tx3);transition:transform 0.2s;display:inline-block;transform:rotate(${insightsOpen?'0':'180'}deg)">⌃</span>
+  </div>
+  ${insightsOpen?`<div id="insights-card-body" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bor)">
+    <p style="font-size:12px;color:var(--tx3);padding:8px 0;text-align:center">Loading…</p>
+  </div>`:''}
+</div>`;
 }
+
 
 // ── SECTIONS ──────────────────────────────────────────────────────────────────
 function renderSections(){
@@ -1302,6 +1563,32 @@ function savePrice(){
 }
 
 // SYNC SETUP
+function showGeminiKeySetup(){
+  const masked=S.geminiKey?S.geminiKey.slice(0,8)+'…':'';
+  modal(`
+<div class="sbox"><h3>Gemini API key</h3>
+<p>Get a <strong>free</strong> key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--bd)">aistudio.google.com</a> → Create API key.</p>
+<p>The key is <strong>encrypted and stored in your Google Drive</strong> — same encryption as your farm data. Never stored in plain text.</p>
+<p>Free tier: 1,500 requests/day — once-a-day usage costs nothing.</p></div>
+<div class="fg"><label class="fl">Gemini API Key</label><input id="ak-in" type="password" placeholder="AIza..." autocomplete="off"/></div>
+${masked?`<p style="font-size:11px;color:var(--tx3);margin-top:-8px">Current key: ${masked} (leave blank to keep)</p>`:''}
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveGeminiKey()">Save to Drive</button></div>`,'Gemini API key');
+}
+async function saveGeminiKey(){
+  const v=document.getElementById('ak-in').value.trim();
+  const keyToSave=v||(S.geminiKey||'');
+  if(!keyToSave){showToast('Enter a valid API key');return;}
+  if(!cfg.passphrase){showToast('Set up sync passphrase first — needed to encrypt the key');return;}
+  closeModal();
+  showToast('Saving key to Drive…');
+  try{
+    await getOAuthToken();
+    await saveGeminiKeyToDrive(keyToSave);
+    showToast('API key saved securely ✓');
+    setTimeout(()=>fetchAIInsights(true),400);
+  }catch(e){showToast('Save failed: '+e.message);}
+}
+
 function showPassphraseSetup(){
   modal(`
 <div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with family.</strong></p></div>
@@ -1360,6 +1647,10 @@ function renderSettings(){
       <button onclick="setThemePref('system')" id="tbtn-system" class="ia">Auto</button>
       <button onclick="setThemePref('dark')" id="tbtn-dark" class="ia">🌙</button>
     </div>
+  </div>
+  <div class="row">
+    <div><div class="rt">Gemini API key</div><div class="rs">${S.geminiKey?S.geminiKey.slice(0,8)+'…  (stored in Drive)':'Not set — needed for insights'}</div></div>
+    <button onclick="showGeminiKeySetup()" class="ia e">${S.geminiKey?'Change':'Set up'}</button>
   </div>
   <div class="row">
     <div><div class="rt">Passphrase</div><div class="rs">${cfg.passphrase?'Set ✓':'Not set'}</div></div>
@@ -1557,6 +1848,7 @@ function setTab(tab){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('nav-'+tab)?.classList.add('active');
   render();
+  if(tab==='dashboard') initInsights();
 }
 function render(){
   const el=document.getElementById('main-content');if(!el)return;
@@ -1566,6 +1858,8 @@ function render(){
 }
 
 render();
+if(S.tab==='dashboard') initInsights();
+scheduleInsightsFetch();
 </script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 </body>
