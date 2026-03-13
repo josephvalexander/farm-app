@@ -300,8 +300,8 @@ function loadLocal(){
     if(d){const p=JSON.parse(d);
       // migrate old schema: marketPrice → priceDried
       if(p.marketPrice&&!p.priceDried){p.priceDried=p.marketPrice;p.priceDate=p.marketPriceDate||null;delete p.marketPrice;delete p.marketPriceDate;}
-      if(!p.dryings)p.dryings=[];
       db={...db,...p};
+      if(!db.dryings)db.dryings=[];
     }
     const c=localStorage.getItem(CFG_KEY);
     if(c)cfg={...cfg,...JSON.parse(c)};
@@ -466,6 +466,7 @@ function mergeDb(local,cloud){
     yields:ml(local.yields,cloud.yields),
     expenses:ml(local.expenses,cloud.expenses),
     incomes:ml(local.incomes,cloud.incomes),
+    dryings:ml(local.dryings||[],cloud.dryings||[]),
     priceRaw:newer?cloud.priceRaw:local.priceRaw,
     priceDried:newer?cloud.priceDried:local.priceDried,
     priceDate:newer?cloud.priceDate:local.priceDate,
@@ -1279,6 +1280,7 @@ function renderIncome(){
 // ── DRYING ────────────────────────────────────────────────────────────────────
 function renderDrying(){
   const period=S.dryPeriod||'month';
+  if(!db.dryings)db.dryings=[];
   const totalRawIn=db.dryings.reduce((s,d)=>s+(d.rawQty||0),0);
   const totalDriedOut=db.dryings.reduce((s,d)=>s+(d.driedQty||0),0);
   const avgRatio=totalRawIn>0?((totalDriedOut/totalRawIn)*100).toFixed(1):0;
