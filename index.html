@@ -223,6 +223,10 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5.5 3 2 4-6 3 2.5M15 6h2v2"/></svg>
     Forecast<div class="nb-dot"></div>
   </button>
+  <button class="nb" id="nav-settings" onclick="setTab('settings')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.2 4.2l1.4 1.4M14.4 14.4l1.4 1.4M4.2 15.8l1.4-1.4M14.4 5.6l1.4-1.4"/></svg>
+    Settings<div class="nb-dot"></div>
+  </button>
 </div>
 <div id="modal-root"></div>
 
@@ -230,8 +234,9 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
 const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.appdata';
+const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
 const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
-const AUTO_SYNC_INTERVAL=5*60*1000; // 5 minutes
+const AUTO_SYNC_INTERVAL=5*60*1000;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
@@ -310,6 +315,33 @@ async function writeFile(id,content){
 }
 
 // ── SYNC ──────────────────────────────────────────────────────────────────────
+async function findNamedFile(name){
+  const r=await driveFetch(`drive/v3/files?spaces=appDataFolder&q=name%3D'${name}'&fields=files(id,name,modifiedTime)`);
+  const d=await r.json();return d.files?.[0]||null;
+}
+
+async function rotateBackups(currentRaw){
+  // Rotate: bak2→bak3, bak1→bak2, current→bak1
+  try{
+    const [f1,f2,f3]=await Promise.all(BACKUP_FILES.map(n=>findNamedFile(n)));
+    // bak2 → bak3
+    if(f2){const c=await readFile(f2.id);if(f3)await writeFile(f3.id,c);else await writeNamedFile(null,BACKUP_FILES[2],c);}
+    // bak1 → bak2
+    if(f1){const c=await readFile(f1.id);if(f2)await writeFile(f2.id,c);else await writeNamedFile(null,BACKUP_FILES[1],c);}
+    // current → bak1
+    if(f1)await writeFile(f1.id,currentRaw);
+    else await writeNamedFile(null,BACKUP_FILES[0],currentRaw);
+  }catch(e){console.warn('Backup rotation failed (non-fatal):',e);}
+}
+
+async function writeNamedFile(id,name,content){
+  const meta={name,parents:id?undefined:['appDataFolder']};
+  const form=new FormData();
+  form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+  form.append('file',new Blob([content],{type:'text/plain'}));
+  return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
+}
+
 async function triggerSync(manual=false){
   if(S.syncing)return;
   if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
@@ -329,6 +361,8 @@ async function triggerSync(manual=false){
       let cloud;
       try{cloud=await decrypt(raw,cfg.passphrase);}
       catch(e){setSyncUI('err','Wrong passphrase');S.syncing=false;return;}
+      // Rotate backups before overwriting (fire and forget)
+      rotateBackups(raw);
       db=mergeDb(db,cloud);saveLocal();
       const enc=await encrypt(db,cfg.passphrase);
       await writeFile(file.id,enc);
@@ -916,6 +950,220 @@ function showClientIdSetup(){
 }
 function saveClientId(){const v=document.getElementById('cid-in').value.trim();if(!v||!v.includes('.apps.googleusercontent.com')){alert('Paste a valid Client ID');return;}cfg.clientId=v;saveCfg();closeModal();triggerSync(true);}
 
+// ── SETTINGS & BACKUP ─────────────────────────────────────────────────────────
+function renderSettings(){
+  const lastSync=cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'Never';
+  const counts=`${db.sections.length} sections · ${db.yields.length} yield records · ${db.expenses.length} expenses · ${db.incomes.length} income records`;
+  return`
+<div class="card">
+  <div class="ct">Export &amp; Import</div>
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.5">Export saves all your data as a <strong>JSON file</strong> to your phone. Import loads it back. Use this as a manual backup any time.</p>
+  <div style="display:flex;gap:8px">
+    <button onclick="exportJSON()" style="flex:1;padding:11px;background:var(--bbg);border:1.5px solid var(--bbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--bd);cursor:pointer;font-family:inherit">
+      ⬇ Export JSON
+    </button>
+    <button onclick="document.getElementById('import-file').click()" style="flex:1;padding:11px;background:var(--abg);border:1.5px solid var(--abr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--ad);cursor:pointer;font-family:inherit">
+      ⬆ Import JSON
+    </button>
+  </div>
+  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)"/>
+  <p style="font-size:11px;color:var(--tx3);margin-top:10px">Current data: ${counts}</p>
+</div>
+
+<div class="card">
+  <div class="ct">Drive backups
+    <span class="ct-action" onclick="showBackups()">View &amp; restore</span>
+  </div>
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:10px;line-height:1.5">Last 3 snapshots are saved automatically on every sync. Tap <strong>View &amp; restore</strong> to load any previous version.</p>
+  <div style="display:flex;gap:8px;margin-bottom:10px">
+    <button onclick="manualBackup()" style="flex:1;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
+      ☁ Save snapshot now
+    </button>
+  </div>
+  <p style="font-size:11px;color:var(--tx3)">Last sync: ${lastSync}</p>
+</div>
+
+<div class="card">
+  <div class="ct">Sync settings</div>
+  <div class="row">
+    <div><div class="rt">Passphrase</div><div class="rs">${cfg.passphrase?'Set ✓':'Not set'}</div></div>
+    <button onclick="showChangePassphrase()" class="ia e">Change</button>
+  </div>
+  <div class="row">
+    <div><div class="rt">Google Client ID</div><div class="rs">${cfg.clientId?cfg.clientId.slice(0,24)+'…':'Not set'}</div></div>
+    <button onclick="showClientIdSetup()" class="ia e">Change</button>
+  </div>
+  <div class="row">
+    <div><div class="rt">Device ID</div><div class="rs">${cfg.deviceId}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="ct">Danger zone</div>
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Clear all local data from this device. Drive data is not affected — you can re-sync to restore.</p>
+  <button onclick="confirmClearLocal()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit">
+    🗑 Clear local data
+  </button>
+</div>`;
+}
+
+// EXPORT JSON
+function exportJSON(){
+  const json=JSON.stringify(db,null,2);
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='vplantations_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Export saved to downloads');
+}
+
+// IMPORT JSON
+let _pendingImport=null;
+function importJSON(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.sections||!data.yields){showToast('Invalid backup file');return;}
+      _pendingImport=data;
+      modal(`
+<div class="cbox"><p>This will <strong>replace all local data</strong> with the imported file.<br>Drive data is unaffected until next sync.</p></div>
+<div style="font-size:13px;color:var(--tx2);margin-bottom:14px">
+  Importing: ${data.sections?.length||0} sections · ${data.yields?.length||0} yield records · ${data.expenses?.length||0} expenses · ${data.incomes?.length||0} income records
+</div>
+<div class="btn-row">
+  <button class="btnc" onclick="closeModal()">Cancel</button>
+  <button class="btnp" onclick="doImport()">Import</button>
+</div>`,'Confirm import');
+    }catch(err){showToast('Could not read file — invalid JSON');}
+  };
+  reader.readAsText(file);
+  input.value='';
+}
+function doImport(){
+  try{if(!_pendingImport)return;db={...db,..._pendingImport};_pendingImport=null;saveLocal();closeModal();render();showToast('Data imported successfully');}
+  catch(e){showToast('Import failed');}
+}
+
+// MANUAL SNAPSHOT
+async function manualBackup(){
+  if(!cfg.passphrase){showToast('Set up sync first');return;}
+  if(!navigator.onLine){showToast('No internet connection');return;}
+  showToast('Saving snapshot…');
+  try{
+    await getOAuthToken();
+    const enc=await encrypt(db,cfg.passphrase);
+    const file=await findFile();
+    if(file){await rotateBackups(await readFile(file.id));}
+    showToast('Snapshot saved to Drive ✓');
+  }catch(e){showToast('Snapshot failed — check connection');}
+}
+
+// VIEW & RESTORE BACKUPS FROM DRIVE
+async function showBackups(){
+  if(!cfg.passphrase){showToast('Set up sync passphrase first');return;}
+  if(!navigator.onLine){showToast('Need internet to load backups');return;}
+  modal(`<div style="text-align:center;padding:20px;color:var(--tx3)">Loading backups from Drive…</div>`,'Drive backups');
+  try{
+    await getOAuthToken();
+    const files=await Promise.all(BACKUP_FILES.map(n=>findNamedFile(n)));
+    const items=files.map((f,i)=>({f,name:BACKUP_FILES[i],label:`Backup ${i+1}`})).filter(x=>x.f);
+    if(!items.length){
+      document.querySelector('.md').innerHTML=`<div class="mh"></div><div class="mt">Drive backups</div><div class="empty">No backups found yet.<br>They're created automatically on each sync.</div><div class="btn-row"><button class="btnc" onclick="closeModal()">Close</button></div>`;
+      return;
+    }
+    // Try to read timestamps from each backup
+    const rows=await Promise.all(items.map(async item=>{
+      try{
+        const raw=await readFile(item.f.id);
+        const data=await decrypt(raw,cfg.passphrase);
+        const ts=data.updatedAt?new Date(data.updatedAt).toLocaleString('en-IN'):'Unknown date';
+        const counts=`${data.sections?.length||0} sec · ${data.yields?.length||0} yield · ${data.expenses?.length||0} exp · ${data.incomes?.length||0} income`;
+        return{...item,ts,counts,ok:true};
+      }catch(e){return{...item,ts:'Could not read',counts:'',ok:false};}
+    }));
+    const html=rows.map((r,i)=>`
+<div class="row">
+  <div style="flex:1;min-width:0">
+    <div class="rt">${r.label}</div>
+    <div class="rs">${r.ts}</div>
+    <div class="rs">${r.counts}</div>
+  </div>
+  ${r.ok?`<button class="ia e" onclick="confirmRestore('${r.f.id}','${r.label}')">Restore</button>`:'<span style="font-size:11px;color:var(--rd)">Unreadable</span>'}
+</div>`).join('');
+    document.querySelector('.md').innerHTML=`<div class="mh"></div><div class="mt">Drive backups</div>${html}<div class="btn-row"><button class="btnc" onclick="closeModal()">Close</button></div>`;
+  }catch(e){document.querySelector('.md').innerHTML=`<div class="mh"></div><div class="mt">Drive backups</div><div class="empty">Failed to load backups.<br>${e.message}</div><div class="btn-row"><button class="btnc" onclick="closeModal()">Close</button></div>`;}
+}
+
+function confirmRestore(fileId,label){
+  modal(`
+<div class="cbox"><p>Restore from <strong>${label}</strong>?<br>This replaces current local data. A snapshot of your current data will be saved first.</p></div>
+<div class="btn-row">
+  <button class="btnc" onclick="showBackups()">← Back</button>
+  <button class="btnp" onclick="doRestore('${fileId}')">Restore</button>
+</div>`,'Confirm restore');
+}
+async function doRestore(fileId){
+  closeModal();showToast('Restoring…');
+  try{
+    // Save current state as a snapshot first
+    const enc=await encrypt(db,cfg.passphrase);
+    const mainFile=await findFile();
+    if(mainFile)await rotateBackups(await readFile(mainFile.id));
+    // Load the backup
+    const raw=await readFile(fileId);
+    const data=await decrypt(raw,cfg.passphrase);
+    db={...db,...data};saveLocal();render();
+    showToast('Restored successfully ✓');
+  }catch(e){showToast('Restore failed: '+e.message);}
+}
+
+// CHANGE PASSPHRASE
+function showChangePassphrase(){
+  modal(`
+<div class="sbox"><h3>Change passphrase</h3><p>All devices must update to the new passphrase before syncing, or they will get a "Wrong passphrase" error.</p></div>
+<div class="fg"><label class="fl">Current passphrase</label><input id="pp-old" type="password"/></div>
+<div class="fg"><label class="fl">New passphrase (min 6 chars)</label><input id="pp-new" type="password"/></div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="doChangePassphrase()">Change &amp; re-sync</button></div>`,'Change passphrase');
+}
+async function doChangePassphrase(){
+  const oldPP=document.getElementById('pp-old').value;
+  const newPP=document.getElementById('pp-new').value.trim();
+  if(!oldPP||!newPP||newPP.length<6){showToast('Fill both fields (min 6 chars)');return;}
+  if(oldPP!==cfg.passphrase){showToast('Current passphrase is incorrect');return;}
+  if(!navigator.onLine){showToast('Need internet to re-encrypt Drive file');return;}
+  closeModal();showToast('Re-encrypting…');
+  try{
+    await getOAuthToken();
+    const file=await findFile();
+    if(file){
+      const raw=await readFile(file.id);
+      let data;
+      try{data=await decrypt(raw,oldPP);}catch(e){showToast('Could not decrypt with old passphrase');return;}
+      const enc=await encrypt(data,newPP);
+      await writeFile(file.id,enc);
+    }
+    cfg.passphrase=newPP;saveCfg();
+    showToast('Passphrase changed ✓ — update all devices');
+  }catch(e){showToast('Failed: '+e.message);}
+}
+
+// CLEAR LOCAL
+function confirmClearLocal(){
+  modal(`
+<div class="cbox"><p>Clear all local data on this device?<br>Your Drive backup is safe — re-sync to restore.</p></div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnd" onclick="doClearLocal()">Clear local data</button></div>`,'Clear local data');
+}
+function doClearLocal(){
+  localStorage.removeItem(DB_KEY);
+  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+  closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 function setTab(tab){
   S.tab=tab;
@@ -925,7 +1173,7 @@ function setTab(tab){
 }
 function render(){
   const el=document.getElementById('main-content');if(!el)return;
-  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast};
+  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,forecast:renderForecast,settings:renderSettings};
   el.innerHTML=(map[S.tab]||renderDashboard)();
 }
 
