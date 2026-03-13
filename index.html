@@ -269,12 +269,14 @@ const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/aut
 const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
 const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
 const AUTO_SYNC_INTERVAL=5*60*1000;
+const NEWS_KEY='vp_news_v1';
+const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
+let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,newsApiKey:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',expTab:'all',syncing:false,fetchingPrice:false,oauthToken:null,pendingSync:false};
+let S={tab:'dashboard',expTab:'all',syncing:false,fetchingPrice:false,oauthToken:null,pendingSync:false,fetchingNews:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -1103,7 +1105,7 @@ function renderForecast(){
   const CL2={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw mat.',crop:'Crop',other:'Other'};
   const expColors={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx3)'};
 
-  return\`
+  return`
 <div class="card">
   <div class="ct">Basis</div>
   <div class="mg">
@@ -1120,42 +1122,42 @@ function renderForecast(){
 
 <div class="card">
   <div class="ct">Projected yield — next 8 months</div>
-  \${rows.map(r=>\`
+  ${rows.map(r=>`
   <div class="br-row">
-    <div class="br-lbl" style="font-size:11px;font-weight:\${r.isPeak?700:400}">\${r.label}\${r.isPeak?'<span class="pk" style="margin-left:3px">Peak</span>':''}</div>
-    <div class="br-trk"><div class="br-fill" style="width:\${Math.round(r.projYield/maxYield*100)}%;\${r.hasActual?'background:linear-gradient(90deg,var(--bd),var(--bbr))':''}"></div></div>
-    <div class="br-val">\${r.projYield} kg\${r.hasActual?' ✓':''}</div>
-  </div>\`).join('')}
+    <div class="br-lbl" style="font-size:11px;font-weight:${r.isPeak?700:400}">${r.label}${r.isPeak?'<span class="pk" style="margin-left:3px">Peak</span>':''}</div>
+    <div class="br-trk"><div class="br-fill" style="width:${Math.round(r.projYield/maxYield*100)}%;${r.hasActual?'background:linear-gradient(90deg,var(--bd),var(--bbr))':''}"></div></div>
+    <div class="br-val">${r.projYield} kg${r.hasActual?' ✓':''}</div>
+  </div>`).join('')}
   <p style="font-size:10px;color:var(--tx3);margin-top:8px">✓ = based on your actual recorded data for that month</p>
 </div>
 
 <div class="card">
   <div class="ct">Projected expenses — next 8 months</div>
-  \${rows.map(r=>\`
+  ${rows.map(r=>`
   <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:13px;font-weight:600">\${r.label}\${r.isPeak?'<span class="pk" style="margin-left:4px">Peak</span>':''}</span>
-      <span style="font-size:14px;font-weight:700;color:var(--ad)">\${fc(r.projExp)}</span>
+      <span style="font-size:13px;font-weight:600">${r.label}${r.isPeak?'<span class="pk" style="margin-left:4px">Peak</span>':''}</span>
+      <span style="font-size:14px;font-weight:700;color:var(--ad)">${fc(r.projExp)}</span>
     </div>
     <div style="display:flex;gap:3px;height:6px;border-radius:4px;overflow:hidden">
-      \${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>\`
-        <div style="flex:\${v};background:\${expColors[cat]};min-width:3px" title="\${CL2[cat]}: \${fc(v)}"></div>
-      \`).join('')}
+      ${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>`
+        <div style="flex:${v};background:${expColors[cat]};min-width:3px" title="${CL2[cat]}: ${fc(v)}"></div>
+      `).join('')}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
-      \${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>\`
-        <span style="font-size:10px;color:var(--tx3)">\${CL2[cat]} \${fc(v)}</span>
-      \`).join('')}
+      ${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>`
+        <span style="font-size:10px;color:var(--tx3)">${CL2[cat]} ${fc(v)}</span>
+      `).join('')}
     </div>
-  </div>\`).join('')}
+  </div>`).join('')}
 </div>
 
-\${db.expenses.length===0?\`
+${db.expenses.length===0?`
 <div class="sbox">
   <h3>No expense data yet</h3>
   <p>Add expenses in the Expenses tab to get accurate projections. Currently showing a flat estimate.</p>
-</div>\`:''}
-\`;
+</div>`:''}
+`;
 }
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
