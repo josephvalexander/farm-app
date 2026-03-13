@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<meta name="theme-color" content="#3B6D11"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Farm"/>
+<title>Thopramkudy Farm</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+:root {
+  --green-dark: #27500A;
+  --green-mid: #3B6D11;
+  --green-light: #639922;
+  --green-bg: #EAF3DE;
+  --green-border: #C0DD97;
+  --amber-dark: #854F0B;
+  --amber-bg: #FAEEDA;
+  --amber-border: #FAC775;
+  --red-dark: #993C1D;
+  --red-bg: #FAECE7;
+  --blue-dark: #185FA5;
+  --blue-bg: #E6F1FB;
+  --gray-bg: #F1EFE8;
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface2: #f8f7f4;
+  --border: rgba(0,0,0,0.1);
+  --border2: rgba(0,0,0,0.18);
+  --text: #1a1a18;
+  --text2: #5f5e5a;
+  --text3: #888780;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1c18;
+    --surface: #23261f;
+    --surface2: #2c3027;
+    --border: rgba(255,255,255,0.1);
+    --border2: rgba(255,255,255,0.18);
+    --text: #e8e6de;
+    --text2: #a8a69e;
+    --text3: #6e6c66;
+    --green-bg: #1a2e0a;
+    --green-border: #2d5010;
+    --amber-bg: #2a1e08;
+    --amber-border: #5a3a10;
+    --red-bg: #2a1008;
+    --blue-bg: #081828;
+    --gray-bg: #1e1e1c;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;max-width:520px;margin:0 auto;display:flex;flex-direction:column}
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
+.header-left h1{font-size:16px;font-weight:600;color:var(--text)}
+.header-left p{font-size:11px;color:var(--text3);margin-top:1px}
+.sync-btn{display:flex;align-items:center;gap:5px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:20px;padding:5px 10px;font-size:11px;font-weight:500;color:var(--green-dark);cursor:pointer;white-space:nowrap}
+.sync-btn svg{width:13px;height:13px;flex-shrink:0}
+.sync-btn.syncing svg{animation:spin 1s linear infinite}
+.sync-btn.error{background:var(--red-bg);border-color:#f0997b;color:var(--red-dark)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.content{flex:1;padding:12px;overflow-y:auto;padding-bottom:80px}
+.nav{display:flex;border-top:1px solid var(--border);background:var(--surface);position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:20}
+.nav-btn{flex:1;padding:8px 4px 10px;border:none;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--text3);font-size:10px;font-family:inherit}
+.nav-btn.active{color:var(--green-mid)}
+.nav-btn svg{width:20px;height:20px}
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:14px;margin-bottom:10px}
+.card-title{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.metric{background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px}
+.metric-label{font-size:11px;color:var(--text3);margin-bottom:3px}
+.metric-value{font-size:20px;font-weight:600;color:var(--text);line-height:1}
+.metric-sub{font-size:10px;color:var(--text3);margin-top:2px}
+.metric.green .metric-value{color:var(--green-mid)}
+.metric.red .metric-value{color:var(--red-dark)}
+.metric.amber .metric-value{color:var(--amber-dark)}
+.row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.row-title{font-size:13px;font-weight:500;color:var(--text)}
+.row-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.row-right{text-align:right;flex-shrink:0;margin-left:8px}
+.badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px;display:inline-block}
+.badge-labor{background:var(--green-bg);color:var(--green-dark)}
+.badge-pesticide{background:var(--red-bg);color:var(--red-dark)}
+.badge-rawmat{background:var(--amber-bg);color:var(--amber-dark)}
+.badge-crop{background:var(--blue-bg);color:var(--blue-dark)}
+.badge-other{background:var(--gray-bg);color:var(--text2)}
+.add-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px;background:none;border:1px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--text2);font-family:inherit;margin-top:10px}
+.add-btn:active{background:var(--surface2)}
+.bar-row{display:flex;align-items:center;gap:8px;margin:4px 0}
+.bar-label{font-size:11px;color:var(--text3);width:62px;flex-shrink:0}
+.bar-track{flex:1;height:7px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:var(--green-light)}
+.bar-val{font-size:11px;color:var(--text2);width:52px;text-align:right;flex-shrink:0}
+.price-banner{background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.price-main{font-size:22px;font-weight:700;color:var(--green-dark)}
+.price-meta{font-size:11px;color:var(--green-mid);margin-top:2px}
+.price-center-link{font-size:11px;color:var(--green-mid);text-decoration:none;display:block;margin-top:1px}
+.tab-row{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px}
+.tab-row::-webkit-scrollbar{display:none}
+.tab{flex-shrink:0;padding:6px 12px;border:1px solid var(--border);border-radius:20px;background:none;font-size:12px;cursor:pointer;color:var(--text2);font-family:inherit;white-space:nowrap}
+.tab.active{background:var(--green-bg);border-color:var(--green-border);color:var(--green-dark);font-weight:500}
+.income-amount{font-size:14px;font-weight:600;color:var(--green-mid)}
+.proj-profit.pos{color:var(--green-mid);font-weight:600}
+.proj-profit.neg{color:var(--red-dark);font-weight:600}
+.peak-badge{font-size:10px;background:var(--green-bg);color:var(--green-mid);padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:500}
+.empty{text-align:center;padding:28px 16px;color:var(--text3);font-size:13px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--surface);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:88dvh;overflow-y:auto}
+.modal-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 16px}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:16px}
+.form-group{margin-bottom:13px}
+.form-label{font-size:12px;color:var(--text2);margin-bottom:4px;display:block;font-weight:500}
+input[type=text],input[type=number],input[type=date],input[type=month],input[type=password],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;appearance:none;-webkit-appearance:none}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green-mid)}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn-primary{flex:1;padding:12px;background:var(--green-mid);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn-primary:active{background:var(--green-dark)}
+.btn-cancel{padding:12px 16px;background:none;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:14px;cursor:pointer;font-family:inherit;color:var(--text)}
+.setup-box{background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.setup-box h3{font-size:13px;font-weight:600;color:var(--amber-dark);margin-bottom:8px}
+.setup-box p{font-size:12px;color:var(--amber-dark);line-height:1.5;margin-bottom:8px}
+.setup-box ol{font-size:12px;color:var(--amber-dark);line-height:1.7;padding-left:16px}
+.setup-input-row{display:flex;gap:6px;margin-top:8px}
+.setup-input-row input{flex:1;font-size:13px}
+.setup-input-row button{padding:8px 12px;background:var(--green-mid);color:#fff;border:none;border-radius:var(--radius-sm);font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.conflict-box{background:var(--blue-bg);border:1px solid #85B7EB;border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.conflict-box h3{font-size:13px;font-weight:600;color:var(--blue-dark);margin-bottom:6px}
+.conflict-box p{font-size:12px;color:var(--blue-dark);line-height:1.5;margin-bottom:8px}
+.btn-conflict{padding:8px 14px;font-size:12px;font-weight:500;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;border:1px solid #85B7EB}
+.btn-take-cloud{background:var(--blue-bg);color:var(--blue-dark)}
+.btn-take-local{background:var(--surface);color:var(--text)}
+.btn-merge{background:var(--green-mid);color:#fff;border-color:var(--green-mid)}
+.sync-log{font-size:11px;color:var(--text3);margin-top:6px;font-style:italic}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Thopramkudy Farm</h1>
+    <p>Cardamom Estate · Idukki</p>
+  </div>
+  <button class="sync-btn" id="sync-btn" onclick="triggerSync()">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/>
+      <path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/>
+    </svg>
+    <span id="sync-label">Sync</span>
+  </button>
+</div>
+
+<div class="content" id="main-content"></div>
+
+<div class="nav">
+  <button class="nav-btn active" id="nav-dashboard" onclick="setTab('dashboard')">
+    <svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>
+    Dashboard
+  </button>
+  <button class="nav-btn" id="nav-sections" onclick="setTab('sections')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5h14M3 10h10M3 15h7"/></svg>
+    Sections
+  </button>
+  <button class="nav-btn" id="nav-yield" onclick="setTab('yield')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5 3 2.5 4-6 3 3"/></svg>
+    Yield
+  </button>
+  <button class="nav-btn" id="nav-expenses" onclick="setTab('expenses')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 9h6M7 12.5h4"/></svg>
+    Expenses
+  </button>
+  <button class="nav-btn" id="nav-income" onclick="setTab('income')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5v3.5l2.5 1.5"/></svg>
+    Income
+  </button>
+  <button class="nav-btn" id="nav-forecast" onclick="setTab('forecast')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5.5 3 2 4-6 3 2.5M15 6h2v2"/></svg>
+    Forecast
+  </button>
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const DB_KEY = 'cf_data_v2';
+const CFG_KEY = 'cf_config_v2';
+
+let cfg = {
+  driveFileId: null,
+  passphrase: null,
+  lastSyncTs: null,
+  deviceId: 'dev_' + Math.random().toString(36).slice(2,8)
+};
+
+let db = {
+  sections: [
+    {id:'s1', name:'Upper Block A', plants:120, age:3, notes:'Near stream', createdAt:Date.now()},
+    {id:'s2', name:'Lower Block B', plants:85, age:5, notes:'Good shade', createdAt:Date.now()},
+    {id:'s3', name:'Hillside C', plants:95, age:2, notes:'New plantation', createdAt:Date.now()},
+  ],
+  yields: [
+    {id:'y1', sectionId:'s1', date:'2024-10', qty:42, season:'Kharif', createdAt:Date.now()},
+    {id:'y2', sectionId:'s2', date:'2024-10', qty:38, season:'Kharif', createdAt:Date.now()},
+    {id:'y3', sectionId:'s3', date:'2024-10', qty:18, season:'Kharif', createdAt:Date.now()},
+    {id:'y4', sectionId:'s1', date:'2025-01', qty:15, season:'Rabi', createdAt:Date.now()},
+    {id:'y5', sectionId:'s2', date:'2025-01', qty:12, season:'Rabi', createdAt:Date.now()},
+  ],
+  expenses: [
+    {id:'e1', date:'2025-02-10', category:'labor', desc:'Harvesting labor', amount:8500, sectionId:null, createdAt:Date.now()},
+    {id:'e2', date:'2025-02-05', category:'pesticide', desc:'Fungicide spray', amount:2200, sectionId:'s1', createdAt:Date.now()},
+    {id:'e3', date:'2025-01-20', category:'rawmat', desc:'Fertilizer NPK', amount:4800, sectionId:null, createdAt:Date.now()},
+    {id:'e4', date:'2025-01-15', category:'crop', desc:'Seedlings', amount:3500, sectionId:'s3', createdAt:Date.now()},
+    {id:'e5', date:'2024-12-01', category:'labor', desc:'Weeding', amount:5000, sectionId:null, createdAt:Date.now()},
+  ],
+  incomes: [
+    {id:'i1', date:'2025-02-12', qty:98, pricePerKg:4200, buyer:'Local trader', notes:'Kharif harvest', sectionId:null, createdAt:Date.now()},
+    {id:'i2', date:'2025-01-20', qty:27, pricePerKg:4050, buyer:'Vandanmedu auction', notes:'Rabi', sectionId:null, createdAt:Date.now()},
+  ],
+  marketPrice: 2450,
+  marketPriceDate: null,
+  updatedAt: Date.now()
+};
+
+let appState = { tab: 'dashboard', expTab: 'all', syncing: false, conflict: null, oauthToken: null };
+
+// ─── PERSIST ────────────────────────────────────────────────────────────────
+function saveLocal() {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e){}
+  db.updatedAt = Date.now();
+}
+function loadLocal() {
+  try {
+    const d = localStorage.getItem(DB_KEY);
+    if (d) db = { ...db, ...JSON.parse(d) };
+    const c = localStorage.getItem(CFG_KEY);
+    if (c) cfg = { ...cfg, ...JSON.parse(c) };
+  } catch(e){}
+}
+function saveCfg() {
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch(e){}
+}
+loadLocal();
+
+// ─── CRYPTO ──────────────────────────────────────────────────────────────────
+async function getKey(passphrase, salt) {
+  const enc = new TextEncoder();
+  const keyMat = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
+    keyMat, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+  );
+}
+async function encrypt(data, passphrase) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await getKey(passphrase, salt);
+  const enc = new TextEncoder();
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)));
+  const buf = new Uint8Array(salt.length + iv.length + ct.byteLength);
+  buf.set(salt); buf.set(iv, 16); buf.set(new Uint8Array(ct), 28);
+  return btoa(String.fromCharCode(...buf));
+}
+async function decrypt(b64, passphrase) {
+  const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const salt = raw.slice(0,16), iv = raw.slice(16,28), ct = raw.slice(28);
+  const key = await getKey(passphrase, salt);
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+// ─── GOOGLE DRIVE SYNC ───────────────────────────────────────────────────────
+const DRIVE_FILENAME = 'cardamom_farm_data.enc';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+
+// NOTE: Replace with your own Google OAuth Client ID
+// Get free at console.cloud.google.com → Create Project → APIs → Drive API → Credentials → OAuth Client ID (Web app)
+// Add authorised JS origins: http://localhost and the URL where you host this file
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE';
+
+async function getOAuthToken() {
+  if (appState.oauthToken) return appState.oauthToken;
+  return new Promise((resolve, reject) => {
+    if (typeof google === 'undefined' || !google.accounts) {
+      reject(new Error('Google API not loaded. Check internet connection.'));
+      return;
+    }
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (resp) => {
+        if (resp.error) reject(new Error(resp.error));
+        else { appState.oauthToken = resp.access_token; resolve(resp.access_token); }
+      }
+    });
+    client.requestAccessToken();
+  });
+}
+
+async function findDriveFile(token) {
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'${DRIVE_FILENAME}'&fields=files(id,modifiedTime)`,
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  const d = await r.json();
+  return d.files?.[0] || null;
+}
+
+async function readDriveFile(token, fileId) {
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  return r.text();
+}
+
+async function writeDriveFile(token, fileId, content) {
+  const meta = { name: DRIVE_FILENAME, parents: fileId ? undefined : ['appDataFolder'] };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(meta)], {type:'application/json'}));
+  form.append('file', new Blob([content], {type:'text/plain'}));
+  const url = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+  const r = await fetch(url, {
+    method: fileId ? 'PATCH' : 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: form
+  });
+  return r.json();
+}
+
+async function triggerSync() {
+  if (appState.syncing) return;
+  if (!cfg.passphrase) { showPassphraseSetup(); return; }
+  if (CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID_HERE') { showClientIdSetup(); return; }
+
+  appState.syncing = true;
+  setSyncUI('syncing', 'Syncing...');
+
+  try {
+    const token = await getOAuthToken();
+    const file = await findDriveFile(token);
+
+    if (!file) {
+      // First sync — upload local data
+      const enc = await encrypt(db, cfg.passphrase);
+      const result = await writeDriveFile(token, null, enc);
+      cfg.driveFileId = result.id;
+      cfg.lastSyncTs = Date.now();
+      saveCfg(); saveLocal();
+      setSyncUI('ok', 'Synced ✓');
+    } else {
+      // File exists — read, merge, write
+      cfg.driveFileId = file.id;
+      const raw = await readDriveFile(token, file.id);
+      let cloudDb;
+      try { cloudDb = await decrypt(raw, cfg.passphrase); }
+      catch(e) { setSyncUI('error', 'Wrong passphrase'); appState.syncing = false; return; }
+
+      const merged = mergeDb(db, cloudDb);
+      db = merged;
+      saveLocal();
+
+      const enc = await encrypt(db, cfg.passphrase);
+      await writeDriveFile(token, file.id, enc);
+      cfg.lastSyncTs = Date.now();
+      saveCfg();
+      setSyncUI('ok', 'Synced ✓');
+      render();
+    }
+  } catch(e) {
+    console.error(e);
+    setSyncUI('error', 'Failed — retry');
+  }
+  appState.syncing = false;
+  setTimeout(() => setSyncUI('idle', 'Sync'), 3000);
+}
+
+// ─── MERGE: last-write-wins by record updatedAt / createdAt ─────────────────
+function mergeDb(local, cloud) {
+  function mergeList(localList, cloudList) {
+    const map = {};
+    for (const item of localList) map[item.id] = item;
+    for (const item of cloudList) {
+      if (!map[item.id] || (item.createdAt || 0) > (map[item.id].createdAt || 0)) {
+        map[item.id] = item;
+      }
+    }
+    return Object.values(map).sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+  }
+  return {
+    sections: mergeList(local.sections, cloud.sections),
+    yields: mergeList(local.yields, cloud.yields),
+    expenses: mergeList(local.expenses, cloud.expenses),
+    incomes: mergeList(local.incomes, cloud.incomes),
+    marketPrice: cloud.updatedAt > local.updatedAt ? cloud.marketPrice : local.marketPrice,
+    marketPriceDate: cloud.updatedAt > local.updatedAt ? cloud.marketPriceDate : local.marketPriceDate,
+    updatedAt: Math.max(local.updatedAt || 0, cloud.updatedAt || 0)
+  };
+}
+
+function setSyncUI(state, label) {
+  const btn = document.getElementById('sync-btn');
+  const lbl = document.getElementById('sync-label');
+  if (!btn) return;
+  btn.className = 'sync-btn' + (state === 'syncing' ? ' syncing' : state === 'error' ? ' error' : '');
+  lbl.textContent = label;
+}
+
+// ─── SETUP FLOWS ─────────────────────────────────────────────────────────────
+function showPassphraseSetup() {
+  modal(`
+    <div class="setup-box">
+      <h3>One-time setup: encryption passphrase</h3>
+      <p>Choose a passphrase that all 2–3 users will enter once. Data is encrypted with this before uploading to Google Drive — Google cannot read it.</p>
+      <p><strong>Write it down and share it with your family members.</strong></p>
+      <div class="setup-input-row">
+        <input type="password" id="pp-input" placeholder="Enter passphrase" autocomplete="new-password"/>
+        <button onclick="savePassphrase()">Save</button>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-top:8px">If you forget this passphrase, your Drive backup cannot be decrypted. Your local data on each device is always accessible.</p>
+  `, 'Setup');
+}
+
+function savePassphrase() {
+  const v = document.getElementById('pp-input').value.trim();
+  if (!v || v.length < 6) { alert('Passphrase must be at least 6 characters'); return; }
+  cfg.passphrase = v;
+  saveCfg();
+  closeModal();
+  triggerSync();
+}
+
+function showClientIdSetup() {
+  modal(`
+    <div class="setup-box">
+      <h3>One-time setup: Google OAuth Client ID</h3>
+      <ol>
+        <li>Go to <strong>console.cloud.google.com</strong></li>
+        <li>Create a new project (e.g. "Farm App")</li>
+        <li>Enable the <strong>Google Drive API</strong></li>
+        <li>Go to Credentials → Create → OAuth 2.0 Client ID</li>
+        <li>Choose <strong>Web application</strong></li>
+        <li>Add your app URL to "Authorised JavaScript origins"</li>
+        <li>Copy the Client ID and paste below</li>
+      </ol>
+      <div class="setup-input-row" style="margin-top:10px">
+        <input type="text" id="cid-input" placeholder="Paste Client ID here"/>
+        <button onclick="saveClientId()">Save</button>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-top:8px">This is free — no billing needed. The Client ID only identifies your app to Google; it does not give anyone access to your data.</p>
+  `, 'Google Drive Setup');
+}
+
+function saveClientId() {
+  const v = document.getElementById('cid-input').value.trim();
+  if (!v || !v.includes('.apps.googleusercontent.com')) { alert('Paste a valid Google Client ID (ends in .apps.googleusercontent.com)'); return; }
+  // Inject into app — in production, you'd replace the constant in the source file
+  window._runtimeClientId = v;
+  cfg.clientId = v;
+  saveCfg();
+  closeModal();
+  alert('Client ID saved. Reload the app once, then tap Sync again.');
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+const fmtCur = n => '₹' + Math.round(n).toLocaleString('en-IN');
+const fmtDate = s => { if (!s) return ''; const d = new Date(s); return isNaN(d) ? s : d.toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'2-digit'}); };
+const totalPlants = () => db.sections.reduce((s,x) => s + (x.plants||0), 0);
+const totalYieldKg = () => db.yields.reduce((s,x) => s + (x.qty||0), 0);
+const totalExpenses = () => db.expenses.reduce((s,x) => s + (x.amount||0), 0);
+const totalIncome = () => db.incomes.reduce((s,x) => s + ((x.qty||0)*(x.pricePerKg||0)), 0);
+const yieldForSection = id => db.yields.filter(y => y.sectionId === id).reduce((s,y) => s + (y.qty||0), 0);
+const catLabel = {labor:'Labor',pesticide:'Pesticide',rawmat:'Raw material',crop:'Crop',other:'Other'};
+
+// ─── RENDERS ─────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const inc = totalIncome(), exp = totalExpenses(), profit = inc - exp;
+  const plants = totalPlants(), ykg = totalYieldKg();
+  const expByCat = {};
+  db.expenses.forEach(e => expByCat[e.category] = (expByCat[e.category]||0) + e.amount);
+  const maxExp = Math.max(...Object.values(expByCat), 1);
+  const barColors = {labor:'var(--green-light)',pesticide:'var(--red-dark)',rawmat:'var(--amber-dark)',crop:'var(--blue-dark)',other:'var(--text3)'};
+  const recentActivity = [
+    ...db.yields.slice(-3).map(y => ({type:'yield',y,ts:y.createdAt})),
+    ...db.incomes.slice(-2).map(i => ({type:'income',i,ts:i.createdAt}))
+  ].sort((a,b) => b.ts - a.ts).slice(0,5);
+
+  return `
+    ${db.marketPrice ? `
+    <div class="price-banner">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--green-mid);margin-bottom:2px">Vandanmedu / Kumily auction</div>
+        <div style="display:flex;align-items:baseline;gap:4px">
+          <span class="price-main">₹${db.marketPrice}</span>
+          <span style="font-size:12px;color:var(--green-mid)">/kg green cardamom</span>
+        </div>
+        <div class="price-meta">Updated: ${db.marketPriceDate || '—'}</div>
+      </div>
+      <button onclick="showUpdatePrice()" style="background:var(--green-mid);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:inherit">Update</button>
+    </div>` : `
+    <div class="price-banner" style="cursor:pointer" onclick="showUpdatePrice()">
+      <div>
+        <div style="font-size:12px;font-weight:500;color:var(--green-mid)">Tap to enter current market price</div>
+        <div style="font-size:11px;color:var(--green-mid);margin-top:2px">Vandanmedu / Kumily auction</div>
+      </div>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="var(--green-mid)" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M10 7v3l2 1.5" stroke-linecap="round"/></svg>
+    </div>`}
+
+    <div class="card">
+      <div class="card-title">Farm overview</div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Total plants</div><div class="metric-value">${plants.toLocaleString('en-IN')}</div><div class="metric-sub">${db.sections.length} sections</div></div>
+        <div class="metric"><div class="metric-label">Total yield</div><div class="metric-value">${ykg} kg</div><div class="metric-sub">${db.yields.length} entries</div></div>
+        <div class="metric green"><div class="metric-label">Total income</div><div class="metric-value">${fmtCur(inc)}</div><div class="metric-sub">${db.incomes.length} sales</div></div>
+        <div class="metric ${profit>=0?'green':'red'}"><div class="metric-label">Net profit</div><div class="metric-value">${fmtCur(profit)}</div><div class="metric-sub">after expenses</div></div>
+      </div>
+    </div>
+
+    ${Object.keys(expByCat).length ? `
+    <div class="card">
+      <div class="card-title">Expense breakdown</div>
+      ${Object.entries(expByCat).map(([cat,amt]) => `
+        <div class="bar-row">
+          <div class="bar-label">${catLabel[cat]||cat}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(amt/maxExp*100)}%;background:${barColors[cat]||'var(--text3)'}"></div></div>
+          <div class="bar-val">${fmtCur(amt)}</div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${recentActivity.length ? `
+    <div class="card">
+      <div class="card-title">Recent activity</div>
+      ${recentActivity.map(a => {
+        if (a.type==='yield') {
+          const sec = db.sections.find(s=>s.id===a.y.sectionId);
+          return `<div class="row"><div><div class="row-title">Yield — ${sec?.name||'Farm'}</div><div class="row-sub">${a.y.date} · ${a.y.season}</div></div><div class="row-right" style="color:var(--green-mid);font-weight:600">${a.y.qty} kg</div></div>`;
+        } else {
+          const i = a.i;
+          return `<div class="row"><div><div class="row-title">Sale — ${i.buyer||'—'}</div><div class="row-sub">${fmtDate(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}</div></div><div class="row-right income-amount">${fmtCur(i.qty*i.pricePerKg)}</div></div>`;
+        }
+      }).join('')}
+    </div>` : ''}
+
+    ${!cfg.passphrase ? `
+    <div class="setup-box">
+      <h3>Set up sync</h3>
+      <p>Tap <strong>Sync</strong> at the top to set up Google Drive backup. Your data stays encrypted and private.</p>
+    </div>` : cfg.lastSyncTs ? `
+    <p class="sync-log">Last synced: ${new Date(cfg.lastSyncTs).toLocaleString('en-IN')}</p>` : ''}
+  `;
+}
+
+function renderSections() {
+  return `
+    <div class="card">
+      <div class="card-title">Plant sections</div>
+      ${db.sections.length === 0 ? '<div class="empty">No sections yet — add your first</div>' :
+        db.sections.map(s => `
+          <div class="row">
+            <div>
+              <div class="row-title">${s.name}</div>
+              <div class="row-sub">${s.plants} plants · Age ${s.age}yr${s.notes ? ' · '+s.notes : ''}</div>
+            </div>
+            <div class="row-right">
+              <div style="font-size:14px;font-weight:600;color:var(--green-mid)">${yieldForSection(s.id)} kg</div>
+              <div style="font-size:10px;color:var(--text3)">total yield</div>
+            </div>
+          </div>`).join('')}
+      <button class="add-btn" onclick="showAddSection()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>
+        Add section
+      </button>
+    </div>
+    <div class="card">
+      <div class="card-title">Summary</div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Sections</div><div class="metric-value">${db.sections.length}</div></div>
+        <div class="metric"><div class="metric-label">Total plants</div><div class="metric-value">${totalPlants().toLocaleString('en-IN')}</div></div>
+        <div class="metric green"><div class="metric-label">Avg yield/plant</div><div class="metric-value">${totalPlants()>0?(totalYieldKg()/totalPlants()).toFixed(2):0} kg</div></div>
+        <div class="metric amber"><div class="metric-label">Best section</div><div class="metric-value" style="font-size:13px">${[...db.sections].sort((a,b)=>yieldForSection(b.id)-yieldForSection(a.id))[0]?.name||'—'}</div></div>
+      </div>
+    </div>`;
+}
+
+function renderYield() {
+  const byMonth = {};
+  db.yields.forEach(y => byMonth[y.date] = (byMonth[y.date]||0) + y.qty);
+  const months = Object.entries(byMonth).sort((a,b) => a[0].localeCompare(b[0]));
+  const maxY = Math.max(...Object.values(byMonth), 1);
+  return `
+    <div class="card">
+      <div class="card-title">Monthly yield</div>
+      ${months.length === 0 ? '<div class="empty">No yield records yet</div>' :
+        months.map(([m,q]) => `
+          <div class="bar-row">
+            <div class="bar-label">${m}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(q/maxY*100)}%"></div></div>
+            <div class="bar-val">${q} kg</div>
+          </div>`).join('')}
+      <button class="add-btn" onclick="showAddYield()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>
+        Add yield record
+      </button>
+    </div>
+    <div class="card">
+      <div class="card-title">All records</div>
+      ${db.yields.length === 0 ? '<div class="empty">No records</div>' :
+        [...db.yields].reverse().map(y => {
+          const sec = db.sections.find(s=>s.id===y.sectionId);
+          return `<div class="row"><div><div class="row-title">${sec?.name||'Entire farm'}</div><div class="row-sub">${y.date} · ${y.season}</div></div><div class="row-right" style="color:var(--green-mid);font-weight:600">${y.qty} kg</div></div>`;
+        }).join('')}
+    </div>`;
+}
+
+function renderExpenses() {
+  const t = appState.expTab;
+  const filtered = t==='all' ? db.expenses : db.expenses.filter(e=>e.category===t);
+  const total = filtered.reduce((s,e)=>s+e.amount,0);
+  return `
+    <div class="card">
+      <div class="card-title">Expenses</div>
+      <div class="tab-row">
+        ${['all','labor','pesticide','rawmat','crop','other'].map(c =>
+          `<button class="tab ${t===c?'active':''}" onclick="appState.expTab='${c}';render()">${c==='all'?'All':catLabel[c]}</button>`
+        ).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Total: <strong>${fmtCur(total)}</strong></div>
+      ${filtered.length===0 ? '<div class="empty">No expenses in this category</div>' :
+        [...filtered].reverse().map(e => `
+          <div class="row">
+            <div style="display:flex;align-items:flex-start;gap:8px">
+              <span class="badge badge-${e.category}">${catLabel[e.category]||e.category}</span>
+              <div><div class="row-title">${e.desc}</div><div class="row-sub">${fmtDate(e.date)}</div></div>
+            </div>
+            <div class="row-right" style="font-size:14px;font-weight:600">${fmtCur(e.amount)}</div>
+          </div>`).join('')}
+      <button class="add-btn" onclick="showAddExpense()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>
+        Add expense
+      </button>
+    </div>`;
+}
+
+function renderIncome() {
+  const total = totalIncome();
+  const totalKg = db.incomes.reduce((s,i)=>s+i.qty,0);
+  const avgPrice = totalKg > 0 ? Math.round(total/totalKg) : 0;
+  return `
+    <div class="card">
+      <div class="card-title">Income summary</div>
+      <div class="metric-grid">
+        <div class="metric green"><div class="metric-label">Total income</div><div class="metric-value">${fmtCur(total)}</div></div>
+        <div class="metric"><div class="metric-label">Kg sold</div><div class="metric-value">${totalKg} kg</div></div>
+        <div class="metric amber"><div class="metric-label">Avg sell price</div><div class="metric-value">₹${avgPrice.toLocaleString('en-IN')}</div><div class="metric-sub">per kg</div></div>
+        <div class="metric"><div class="metric-label">Market price</div><div class="metric-value" style="font-size:15px">₹${(db.marketPrice||'—').toLocaleString?.('en-IN')||db.marketPrice}</div><div class="metric-sub">current avg</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Income records</div>
+      ${db.incomes.length===0 ? '<div class="empty">No income recorded</div>' :
+        [...db.incomes].reverse().map(i => `
+          <div class="row">
+            <div>
+              <div class="row-title">${i.buyer||'—'}</div>
+              <div class="row-sub">${fmtDate(i.date)} · ${i.qty}kg @ ₹${i.pricePerKg}/kg</div>
+              ${i.notes ? `<div style="font-size:11px;color:var(--text3)">${i.notes}</div>` : ''}
+            </div>
+            <div class="row-right income-amount">${fmtCur(i.qty*i.pricePerKg)}</div>
+          </div>`).join('')}
+      <button class="add-btn" onclick="showAddIncome()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2v10M2 7h10"/></svg>
+        Add sale / income
+      </button>
+    </div>`;
+}
+
+function renderForecast() {
+  const mp = db.marketPrice || 2450;
+  const plants = totalPlants();
+  const rawYpp = totalPlants()>0 ? totalYieldKg()/totalPlants() : 0.45;
+  const ypp = rawYpp > 0 ? rawYpp : 0.45;
+  const monthlyFixedExp = db.expenses.length > 0 ? totalExpenses() / 12 : 3000;
+
+  const now = new Date();
+  const rows = Array.from({length:8},(_,i) => {
+    const d = new Date(now.getFullYear(), now.getMonth()+i+1, 1);
+    const mo = d.getMonth()+1;
+    const label = d.toLocaleDateString('en-IN',{month:'short',year:'numeric'});
+    const isPeak = [7,8,9,10].includes(mo);
+    const sf = isPeak ? 1.5 : 0.55;
+    const projYield = Math.round(plants * ypp * sf / 12);
+    const projIncome = projYield * mp;
+    const projExp = Math.round(monthlyFixedExp * (isPeak ? 1.3 : 0.8));
+    const projProfit = projIncome - projExp;
+    return {label, projYield, projIncome, projExp, projProfit, isPeak};
+  });
+
+  const totForecastIncome = rows.reduce((s,r)=>s+r.projIncome,0);
+  const totForecastProfit = rows.reduce((s,r)=>s+r.projProfit,0);
+
+  return `
+    <div class="card">
+      <div class="card-title">Forecast basis</div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Plants</div><div class="metric-value">${plants}</div></div>
+        <div class="metric"><div class="metric-label">Price used</div><div class="metric-value" style="font-size:15px">₹${mp}/kg</div></div>
+        <div class="metric"><div class="metric-label">Yield/plant/yr</div><div class="metric-value">${ypp.toFixed(2)} kg</div><div class="metric-sub">from your data</div></div>
+        <div class="metric amber"><div class="metric-label">Peak season</div><div class="metric-value" style="font-size:13px">Jul–Oct</div><div class="metric-sub">Kharif</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">8-month forecast</div>
+      <div class="metric-grid" style="margin-bottom:12px">
+        <div class="metric green"><div class="metric-label">Forecast income</div><div class="metric-value" style="font-size:16px">${fmtCur(totForecastIncome)}</div></div>
+        <div class="metric ${totForecastProfit>=0?'green':'red'}"><div class="metric-label">Forecast profit</div><div class="metric-value" style="font-size:16px">${fmtCur(totForecastProfit)}</div></div>
+      </div>
+      ${rows.map(r => `
+        <div class="row">
+          <div>
+            <div class="row-title">${r.label}${r.isPeak?'<span class="peak-badge">Peak</span>':''}</div>
+            <div class="row-sub">~${r.projYield}kg · exp ${fmtCur(r.projExp)}</div>
+          </div>
+          <div class="row-right">
+            <div class="proj-profit ${r.projProfit>=0?'pos':'neg'}">${fmtCur(r.projProfit)}</div>
+            <div style="font-size:10px;color:var(--text3)">net</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">Auction centers near Thopramkudy</div>
+      ${[
+        {name:'Vandanmedu (MAS Enterprises)',dist:'~25km',days:'Fridays'},
+        {name:'Kumily auction center',dist:'~30km',days:'Daily'},
+        {name:'Spices Board (official prices)',dist:'Online',days:'Daily'},
+      ].map(c => `
+        <div class="row">
+          <div><div class="row-title">${c.name}</div><div class="row-sub">${c.dist} · ${c.days}</div></div>
+        </div>`).join('')}
+      <a href="https://www.indianspices.com/marketing/price/domestic/daily-price.html" target="_blank" style="display:block;margin-top:10px;font-size:12px;color:var(--green-mid);text-decoration:none">View Spices Board prices →</a>
+    </div>`;
+}
+
+// ─── MODALS ──────────────────────────────────────────────────────────────────
+function modal(body, title) {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-handle"></div>
+        ${title ? `<div class="modal-title">${title}</div>` : ''}
+        ${body}
+      </div>
+    </div>`;
+}
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+
+function showAddSection() {
+  modal(`
+    <div class="form-group"><label class="form-label">Section name</label><input id="f-sn" type="text" placeholder="e.g. Block D East"/></div>
+    <div class="form-group"><label class="form-label">Number of plants</label><input id="f-sp" type="number" placeholder="100"/></div>
+    <div class="form-group"><label class="form-label">Age of plants (years)</label><input id="f-sa" type="number" placeholder="2"/></div>
+    <div class="form-group"><label class="form-label">Notes</label><input id="f-sno" type="text" placeholder="Slope, shade, irrigation..."/></div>
+    <div class="btn-row"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveSection()">Save</button></div>
+  `, 'Add section');
+}
+function saveSection() {
+  const name = document.getElementById('f-sn').value.trim();
+  if (!name) return;
+  db.sections.push({ id:uid(), name, plants:parseInt(document.getElementById('f-sp').value)||0, age:parseInt(document.getElementById('f-sa').value)||0, notes:document.getElementById('f-sno').value.trim(), createdAt:Date.now() });
+  saveLocal(); closeModal(); render();
+}
+
+function showAddYield() {
+  const secOpts = db.sections.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  modal(`
+    <div class="form-group"><label class="form-label">Section</label><select id="f-ys"><option value="">Entire farm</option>${secOpts}</select></div>
+    <div class="form-group"><label class="form-label">Month</label><input id="f-yd" type="month" value="${new Date().toISOString().slice(0,7)}"/></div>
+    <div class="form-group"><label class="form-label">Yield (kg)</label><input id="f-yq" type="number" placeholder="50"/></div>
+    <div class="form-group"><label class="form-label">Season</label><select id="f-yse"><option>Kharif</option><option>Rabi</option><option>Summer</option><option>Other</option></select></div>
+    <div class="btn-row"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveYield()">Save</button></div>
+  `, 'Add yield');
+}
+function saveYield() {
+  const qty = parseFloat(document.getElementById('f-yq').value);
+  if (!qty) return;
+  db.yields.push({ id:uid(), sectionId:document.getElementById('f-ys').value||null, date:document.getElementById('f-yd').value, qty, season:document.getElementById('f-yse').value, createdAt:Date.now() });
+  saveLocal(); closeModal(); render();
+}
+
+function showAddExpense() {
+  const secOpts = db.sections.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  modal(`
+    <div class="form-group"><label class="form-label">Category</label><select id="f-ec"><option value="labor">Labor</option><option value="pesticide">Pesticide</option><option value="rawmat">Raw material</option><option value="crop">Crop</option><option value="other">Other</option></select></div>
+    <div class="form-group"><label class="form-label">Description</label><input id="f-ed" type="text" placeholder="e.g. Weeding labor"/></div>
+    <div class="form-group"><label class="form-label">Amount (₹)</label><input id="f-ea" type="number" placeholder="5000"/></div>
+    <div class="form-group"><label class="form-label">Date</label><input id="f-edt" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
+    <div class="form-group"><label class="form-label">Section (optional)</label><select id="f-es"><option value="">All sections</option>${secOpts}</select></div>
+    <div class="btn-row"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveExpense()">Save</button></div>
+  `, 'Add expense');
+}
+function saveExpense() {
+  const amount = parseFloat(document.getElementById('f-ea').value);
+  const desc = document.getElementById('f-ed').value.trim();
+  if (!amount || !desc) return;
+  db.expenses.push({ id:uid(), category:document.getElementById('f-ec').value, desc, amount, date:document.getElementById('f-edt').value, sectionId:document.getElementById('f-es').value||null, createdAt:Date.now() });
+  saveLocal(); closeModal(); render();
+}
+
+function showAddIncome() {
+  const secOpts = db.sections.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  modal(`
+    <div class="form-group"><label class="form-label">Date</label><input id="f-id" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
+    <div class="form-group"><label class="form-label">Quantity sold (kg)</label><input id="f-iq" type="number" placeholder="100"/></div>
+    <div class="form-group"><label class="form-label">Price per kg (₹)</label><input id="f-ip" type="number" placeholder="${db.marketPrice||2450}"/></div>
+    <div class="form-group"><label class="form-label">Buyer / market</label><input id="f-ib" type="text" placeholder="Vandanmedu auction"/></div>
+    <div class="form-group"><label class="form-label">Section (optional)</label><select id="f-is"><option value="">All sections</option>${secOpts}</select></div>
+    <div class="form-group"><label class="form-label">Notes</label><input id="f-ino" type="text" placeholder="Grade, season, etc."/></div>
+    <div class="btn-row"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveIncome()">Save</button></div>
+  `, 'Add income / sale');
+}
+function saveIncome() {
+  const qty = parseFloat(document.getElementById('f-iq').value);
+  const pricePerKg = parseFloat(document.getElementById('f-ip').value);
+  if (!qty || !pricePerKg) return;
+  db.incomes.push({ id:uid(), date:document.getElementById('f-id').value, qty, pricePerKg, buyer:document.getElementById('f-ib').value.trim(), sectionId:document.getElementById('f-is').value||null, notes:document.getElementById('f-ino').value.trim(), createdAt:Date.now() });
+  saveLocal(); closeModal(); render();
+}
+
+function showUpdatePrice() {
+  modal(`
+    <div class="form-group"><label class="form-label">Current market price (₹/kg)</label><input id="f-mp" type="number" placeholder="2450" value="${db.marketPrice||''}"/></div>
+    <div class="form-group"><label class="form-label">Source / date</label><input id="f-mpd" type="text" placeholder="Vandanmedu, 13 Mar 2025"/></div>
+    <p style="font-size:11px;color:var(--text3);margin-top:4px">Check latest prices at <strong>indianspices.com</strong> or call Vandanmedu auction.</p>
+    <div class="btn-row"><button class="btn-cancel" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="savePrice()">Update</button></div>
+  `, 'Update market price');
+}
+function savePrice() {
+  const v = parseFloat(document.getElementById('f-mp').value);
+  if (!v) return;
+  db.marketPrice = v;
+  db.marketPriceDate = document.getElementById('f-mpd').value || new Date().toLocaleDateString('en-IN');
+  saveLocal(); closeModal(); render();
+}
+
+// ─── ROUTER ──────────────────────────────────────────────────────────────────
+function setTab(tab) {
+  appState.tab = tab;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-'+tab)?.classList.add('active');
+  render();
+}
+function render() {
+  const el = document.getElementById('main-content');
+  if (!el) return;
+  const renderers = { dashboard:renderDashboard, sections:renderSections, yield:renderYield, expenses:renderExpenses, income:renderIncome, forecast:renderForecast };
+  el.innerHTML = (renderers[appState.tab] || renderDashboard)();
+}
+
+render();
+</script>
+
+<!-- Google Identity Services (loaded async — only needed for sync) -->
+<script src="https://accounts.google.com/gsi/client" async></script>
+</body>
+</html>
