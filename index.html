@@ -812,43 +812,122 @@ function renderIncome(){
 
 // ── FORECAST ──────────────────────────────────────────────────────────────────
 function renderForecast(){
-  const mp=db.priceDried||db.priceRaw||2450,plants=totalPlants(),ypp=plants>0?totalYield()/plants:0.45,mexp=db.expenses.length>0?totalExp()/12:3000;
+  const plants=totalPlants();
   const now=new Date();
-  const rows=Array.from({length:8},(_,i)=>{
-    const d=new Date(now.getFullYear(),now.getMonth()+i+1,1),mo=d.getMonth()+1,isPeak=[7,8,9,10].includes(mo);
-    const pY=Math.round(plants*(ypp||0.45)*(isPeak?1.5:0.55)/12),pI=pY*mp,pE=Math.round(mexp*(isPeak?1.3:0.8));
-    return{label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),pY,pI,pE,pP:pI-pE,isPeak};
+  const thisYear=now.getFullYear(), thisMonth=now.getMonth();
+
+  // ── YIELD BASIS ──
+  // Use actual yield data from the last 12 months grouped by month-of-year
+  const yieldByMo={};  // month index (0-11) → [qty, ...]
+  db.yields.forEach(y=>{
+    if(!y.date)return;
+    const d=new Date(y.date+'-01');
+    const age=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+    if(age>=0&&age<12){
+      const mo=d.getMonth();
+      if(!yieldByMo[mo])yieldByMo[mo]=[];
+      yieldByMo[mo].push(y.qty||0);
+    }
   });
-  return`
+  // Monthly avg from actuals, fall back to seasonal pattern if no data
+  const PEAK_PAT=[0.04,0.04,0.05,0.06,0.07,0.08,0.12,0.14,0.13,0.11,0.09,0.07]; // seasonal distribution
+  const totalActualYield=db.yields.reduce((s,y)=>s+(y.qty||0),0);
+  const annualYield=totalActualYield>0?totalActualYield*(12/Math.max(db.yields.length,1)):plants*0.45;
+
+  // ── EXPENSE BASIS ──
+  // Group actual expenses by category and month, compute monthly averages
+  const expByCat={labor:0,pesticide:0,rawmat:0,crop:0,other:0};
+  const expMonths=new Set();
+  db.expenses.forEach(e=>{
+    if(e.date)expMonths.add(e.date.slice(0,7));
+    expByCat[e.category]=(expByCat[e.category]||0)+(e.amount||0);
+  });
+  const nMonths=Math.max(expMonths.size,1);
+  const monthlyExpByCat={};
+  Object.entries(expByCat).forEach(([k,v])=>monthlyExpByCat[k]=v/nMonths);
+  const totalMonthlyExp=Object.values(monthlyExpByCat).reduce((s,v)=>s+v,0);
+
+  // ── 8-MONTH ROWS ──
+  const isPeakMo=mo=>[6,7,8,9].includes(mo); // Jul–Oct (0-indexed)
+  const rows=Array.from({length:8},(_,i)=>{
+    const d=new Date(thisYear,thisMonth+i+1,1);
+    const mo=d.getMonth();
+    const isPeak=isPeakMo(mo);
+    // Projected yield: use actual monthly avg if available, else pattern
+    const pat=PEAK_PAT[mo];
+    const projYield=yieldByMo[mo]
+      ?Math.round(yieldByMo[mo].reduce((s,v)=>s+v,0)/yieldByMo[mo].length)
+      :Math.round(annualYield*pat);
+    // Projected expenses: scale by seasonal factor
+    const expScale=isPeak?1.3:0.85;
+    const projExp=Math.round(totalMonthlyExp*expScale);
+    const projExpByCat={};
+    Object.entries(monthlyExpByCat).forEach(([k,v])=>projExpByCat[k]=Math.round(v*expScale));
+    return{
+      label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),
+      mo,isPeak,projYield,projExp,projExpByCat,
+      hasActual:!!yieldByMo[mo]
+    };
+  });
+
+  const maxYield=Math.max(...rows.map(r=>r.projYield),1);
+  const maxExp=Math.max(...rows.map(r=>r.projExp),1);
+  const CL2={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw mat.',crop:'Crop',other:'Other'};
+  const expColors={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx3)'};
+
+  return\`
 <div class="card">
-  <div class="ct">Forecast basis</div>
+  <div class="ct">Basis</div>
   <div class="mg">
-    <div class="met b"><div class="ml">Plants</div><div class="mv">${plants}</div></div>
-    <div class="met g"><div class="ml">Dried price used</div><div class="mv" style="font-size:15px">₹${mp}/kg</div></div>
-    <div class="met"><div class="ml">Yield/plant/yr</div><div class="mv">${(ypp||0.45).toFixed(2)} kg</div></div>
-    <div class="met a"><div class="ml">Peak months</div><div class="mv" style="font-size:13px">Jul–Oct</div></div>
+    <div class="met b"><div class="ml">Total plants</div><div class="mv">${plants}</div></div>
+    <div class="met g"><div class="ml">Actual yield (all time)</div><div class="mv">${totalActualYield} kg</div><div class="ms">${db.yields.length} records</div></div>
+    <div class="met"><div class="ml">Monthly avg exp</div><div class="mv" style="font-size:16px">${fc(totalMonthlyExp)}</div><div class="ms">over ${nMonths} months</div></div>
+    <div class="met a"><div class="ml">Peak harvest</div><div class="mv" style="font-size:13px">Jul – Oct</div></div>
   </div>
+  <p style="font-size:11px;color:var(--tx3);margin-top:10px;line-height:1.5">
+    Yield projection uses <strong>actual recorded data</strong> for months with history, seasonal pattern for others.
+    Expense projection scales your average by season.
+  </p>
 </div>
+
 <div class="card">
-  <div class="ct">8-month forecast</div>
-  ${rows.map(r=>`
-  <div class="row">
-    <div>
-      <div class="rt">${r.label}${r.isPeak?'<span class="pk">Peak</span>':''}</div>
-      <div class="rs">~${r.pY}kg · exp ${fc(r.pE)}</div>
+  <div class="ct">Projected yield — next 8 months</div>
+  \${rows.map(r=>\`
+  <div class="br-row">
+    <div class="br-lbl" style="font-size:11px;font-weight:\${r.isPeak?700:400}">\${r.label}\${r.isPeak?'<span class="pk" style="margin-left:3px">Peak</span>':''}</div>
+    <div class="br-trk"><div class="br-fill" style="width:\${Math.round(r.projYield/maxYield*100)}%;\${r.hasActual?'background:linear-gradient(90deg,var(--bd),var(--bbr))':''}"></div></div>
+    <div class="br-val">\${r.projYield} kg\${r.hasActual?' ✓':''}</div>
+  </div>\`).join('')}
+  <p style="font-size:10px;color:var(--tx3);margin-top:8px">✓ = based on your actual recorded data for that month</p>
+</div>
+
+<div class="card">
+  <div class="ct">Projected expenses — next 8 months</div>
+  \${rows.map(r=>\`
+  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+      <span style="font-size:13px;font-weight:600">\${r.label}\${r.isPeak?'<span class="pk" style="margin-left:4px">Peak</span>':''}</span>
+      <span style="font-size:14px;font-weight:700;color:var(--ad)">\${fc(r.projExp)}</span>
     </div>
-    <div style="font-size:15px;font-weight:700;color:${r.pP>=0?'var(--gm)':'var(--rd)'};margin-left:8px">${fc(r.pP)}</div>
-  </div>`).join('')}
+    <div style="display:flex;gap:3px;height:6px;border-radius:4px;overflow:hidden">
+      \${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>\`
+        <div style="flex:\${v};background:\${expColors[cat]};min-width:3px" title="\${CL2[cat]}: \${fc(v)}"></div>
+      \`).join('')}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
+      \${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>\`
+        <span style="font-size:10px;color:var(--tx3)">\${CL2[cat]} \${fc(v)}</span>
+      \`).join('')}
+    </div>
+  </div>\`).join('')}
 </div>
-<div class="card">
-  <div class="ct">Market references</div>
-  <div class="row"><div><div class="rt">Vandanmedu — MAS Enterprises</div><div class="rs">~25km · Fridays</div></div></div>
-  <div class="row"><div><div class="rt">Kumily auction center</div><div class="rs">~30km · Daily</div></div></div>
-  <a href="https://www.indianspices.com/marketing/price/domestic/daily-price.html" target="_blank" style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;color:var(--gm);text-decoration:none;font-weight:600">
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="5.5"/><path d="M7 4.5v3l2 1" stroke-linecap="round"/></svg>
-    Spices Board daily prices
-  </a>
-</div>`;
+
+\${db.expenses.length===0?\`
+<div class="sbox">
+  <h3>No expense data yet</h3>
+  <p>Add expenses in the Expenses tab to get accurate projections. Currently showing a flat estimate.</p>
+</div>\`:''}
+\`;
 }
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
