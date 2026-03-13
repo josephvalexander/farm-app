@@ -207,6 +207,16 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
 .pk{font-size:10px;background:var(--gbg);color:var(--gm);padding:2px 7px;border-radius:8px;margin-left:4px;font-weight:700;border:1px solid var(--gbr)}
 .slog{font-size:11px;color:var(--tx3);margin-top:8px;font-style:italic;text-align:center}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.fab{position:fixed;bottom:74px;right:calc(50% - 250px);z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+@media(max-width:520px){.fab{right:16px}}
+.fab-main{width:52px;height:52px;border-radius:50%;background:var(--gm);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(46,125,50,0.35);transition:transform 0.2s,background 0.2s;color:#fff;font-size:22px;line-height:1}
+.fab-main.open{transform:rotate(45deg);background:var(--rd)}
+.fab-items{display:flex;flex-direction:column;align-items:flex-end;gap:8px;transition:opacity 0.15s,transform 0.15s;transform-origin:bottom right}
+.fab-items.hidden{opacity:0;pointer-events:none;transform:translateY(8px)}
+.fab-item{display:flex;align-items:center;gap:8px;cursor:pointer;border:none;background:none;padding:0;font-family:inherit}
+.fab-item-lbl{background:var(--sur);color:var(--tx);font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.12);white-space:nowrap;border:1px solid var(--bor2)}
+.fab-item-btn{width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 2px 10px rgba(0,0,0,0.15);flex-shrink:0}
+.subnav-scroll::-webkit-scrollbar{display:none}
 .section-chip{display:inline-flex;align-items:center;background:var(--sur2);border:1px solid var(--bor);border-radius:20px;padding:2px 8px;font-size:11px;color:var(--tx2);gap:3px}
 .price-source{font-size:10px;color:var(--tx3);margin-top:4px}
 
@@ -245,21 +255,9 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5h14M3 10h10M3 15h7"/></svg>
     Sections<div class="nb-dot"></div>
   </button>
-  <button class="nb" id="nav-yield" onclick="setTab('yield')">
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5 3 2.5 4-6 3 3"/></svg>
-    Yield<div class="nb-dot"></div>
-  </button>
-  <button class="nb" id="nav-expenses" onclick="setTab('expenses')">
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 9h6M7 12.5h4"/></svg>
-    Expenses<div class="nb-dot"></div>
-  </button>
-  <button class="nb" id="nav-income" onclick="setTab('income')">
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5v3.5l2.5 1.5"/></svg>
-    Income<div class="nb-dot"></div>
-  </button>
-  <button class="nb" id="nav-drying" onclick="setTab('drying')">
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16c0-4 2-6 6-6s6 2 6 6"/><path d="M10 10V4"/><path d="M7 6l3-2 3 2"/><ellipse cx="10" cy="16.5" rx="3.5" ry="1.5"/></svg>
-    Drying<div class="nb-dot"></div>
+  <button class="nb" id="nav-records" onclick="setTab('records')">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h12M4 10h12M4 14h8"/><circle cx="16" cy="14" r="3"/><path d="M15 14h2M16 13v2"/></svg>
+    Records<div class="nb-dot"></div>
   </button>
   <button class="nb" id="nav-forecast" onclick="setTab('forecast')">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15l4-5.5 3 2 4-6 3 2.5M15 6h2v2"/></svg>
@@ -287,7 +285,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,oauthToken:null,geminiKey:null,pendingSync:false};
+let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,oauthToken:null,geminiKey:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -1103,6 +1101,22 @@ function shortLabel(l,period){
   return l.slice(2); // 2024 → 24
 }
 
+// ── RECORDS (wrapper with sub-tabs) ───────────────────────────────────────────
+function renderRecords(){
+  const t=S.recTab||'yield';
+  const tabs=[
+    {id:'yield', label:'Yield', icon:'📈'},
+    {id:'expenses', label:'Expenses', icon:'💸'},
+    {id:'income', label:'Income', icon:'💰'},
+    {id:'drying', label:'Drying', icon:'☀️'},
+  ];
+  const subNav=`<div style="display:flex;gap:6px;padding:12px 16px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--sur);border-bottom:1px solid var(--bor);position:sticky;top:56px;z-index:10">
+    ${tabs.map(tb=>`<button onclick="S.recTab='${tb.id}';render()" style="flex-shrink:0;display:flex;align-items:center;gap:5px;padding:7px 14px;font-size:12px;font-weight:600;border-radius:20px 20px 0 0;border:1.5px solid ${t===tb.id?'var(--bd)':'transparent'};border-bottom:${t===tb.id?'2px solid var(--bd)':'2px solid transparent'};background:${t===tb.id?'var(--bbg)':'transparent'};color:${t===tb.id?'var(--bd)':'var(--tx3)'};cursor:pointer;font-family:inherit;white-space:nowrap">${tb.icon} ${tb.label}</button>`).join('')}
+  </div>`;
+  const inner={yield:renderYield,expenses:renderExpenses,income:renderIncome,drying:renderDrying}[t]||renderYield;
+  return subNav+inner();
+}
+
 // ── YIELD ─────────────────────────────────────────────────────────────────────
 function renderYield(){
   const period=S.yieldPeriod||'month';
@@ -1620,17 +1634,14 @@ function showEditDrying(id){
 <div class="fg"><label class="fl">Date</label><input id="f-dd" type="date" value="${d?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Raw green input (kg)</label><input id="f-dr" type="number" value="${d?.rawQty||''}" placeholder="400"/></div>
 <div class="fg"><label class="fl">Dried output (kg)</label><input id="f-do" type="number" value="${d?.driedQty||''}" placeholder="95"/></div>
-<div class="fg"><label class="fl">Drying method</label>
-<select id="f-dm"><option value="sun" ${(d?.method||'sun')==='sun'?'selected':''}>Sun drying</option><option value="mechanical" ${d?.method==='mechanical'?'selected':''}>Mechanical dryer</option><option value="shade" ${d?.method==='shade'?'selected':''}>Shade drying</option></select>
-</div>
-<div class="fg"><label class="fl">Duration (days)</label><input id="f-ddays" type="number" value="${d?.days||''}" placeholder="7"/></div>
+
 <div class="fg"><label class="fl">Notes</label><input id="f-dn" type="text" value="${esc(d?.notes||'')}" placeholder="Grade, batch ref…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveDrying('${id||''}')">Save</button></div>`,d?'Edit drying record':'Add drying record');
 }
 function saveDrying(id){
   const rawQty=parseFloat(document.getElementById('f-dr').value),driedQty=parseFloat(document.getElementById('f-do').value);
   if(!rawQty||!driedQty)return;
-  const data={date:document.getElementById('f-dd').value,rawQty,driedQty,method:document.getElementById('f-dm').value,days:parseInt(document.getElementById('f-ddays').value)||null,notes:document.getElementById('f-dn').value.trim(),updatedAt:Date.now()};
+  const data={date:document.getElementById('f-dd').value,rawQty,driedQty,notes:document.getElementById('f-dn').value.trim(),updatedAt:Date.now()};
   if(!db.dryings)db.dryings=[];
   if(id){const i=db.dryings.findIndex(x=>x.id===id);if(i>=0)db.dryings[i]={...db.dryings[i],...data};}
   else db.dryings.push({id:uid(),createdAt:Date.now(),...data});
@@ -1892,25 +1903,73 @@ function setThemePref(pref){
 
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 function setTab(tab){
-  S.tab=tab;
-  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
-  document.getElementById('nav-'+tab)?.classList.add('active');
+  // sub-tabs live inside Records
+  const recTabs=['yield','expenses','income','drying'];
+  if(recTabs.includes(tab)){
+    S.recTab=tab;
+    S.tab='records';
+    document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+    document.getElementById('nav-records')?.classList.add('active');
+  } else {
+    S.tab=tab;
+    document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+    document.getElementById('nav-'+tab)?.classList.add('active');
+  }
   render();
-  if(tab==='dashboard') initInsights();
+  updateFabVisibility();
+  if(S.tab==='dashboard') initInsights();
 }
 function render(){
   const el=document.getElementById('main-content');if(!el)return;
-  const map={dashboard:renderDashboard,sections:renderSections,yield:renderYield,expenses:renderExpenses,income:renderIncome,drying:renderDrying,forecast:renderForecast,settings:renderSettings};
+  const map={dashboard:renderDashboard,sections:renderSections,records:renderRecords,forecast:renderForecast,settings:renderSettings};
   el.innerHTML=(map[S.tab]||renderDashboard)();
   if(S.tab==='settings') setThemePref(resolveTheme());
 }
 
+// ── QUICK-ADD FAB ─────────────────────────────────────────────────────────────
+function toggleFab(){
+  const items=document.getElementById('fab-items');
+  const btn=document.getElementById('fab-main-btn');
+  const open=!items.classList.contains('hidden');
+  if(open){closeFab();}
+  else{items.classList.remove('hidden');btn.classList.add('open');}
+}
+function closeFab(){
+  const items=document.getElementById('fab-items');
+  const btn=document.getElementById('fab-main-btn');
+  if(items){items.classList.add('hidden');}
+  if(btn){btn.classList.remove('open');}
+}
+// Show FAB only on dashboard tab
+function updateFabVisibility(){
+  const fab=document.getElementById('quick-fab');
+  if(fab) fab.style.display=S.tab==='dashboard'?'flex':'none';
+}
+
 render();
+updateFabVisibility();
 if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
 </script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 
+<div class="fab" id="quick-fab" style="display:none">
+  <div class="fab-items hidden" id="fab-items">
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='yield';render();setTimeout(()=>showEditYield(null),50)">
+      <span class="fab-item-lbl">Add yield</span>
+      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">📈</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='expenses';render();setTimeout(()=>showEditExpense(null),50)">
+      <span class="fab-item-lbl">Add expense</span>
+      <span class="fab-item-btn" style="background:var(--rbg);color:var(--rd)">💸</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='income';render();setTimeout(()=>showEditIncome(null),50)">
+      <span class="fab-item-lbl">Add income</span>
+      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">💰</span>
+    </button>
+  </div>
+  <button class="fab-main" id="fab-main-btn" onclick="toggleFab()">+</button>
+</div>
 <script>
 // ── SERVICE WORKER REGISTRATION ───────────────────────────────────────────────
 if('serviceWorker' in navigator){
