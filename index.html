@@ -281,7 +281,11 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 // NOTE: Replace with your own Google OAuth Client ID
 // Get free at console.cloud.google.com → Create Project → APIs → Drive API → Credentials → OAuth Client ID (Web app)
 // Add authorised JS origins: http://localhost and the URL where you host this file
-const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE';
+const CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE'; // fallback only — runtime value read from cfg
+
+function getClientId() {
+  return cfg.clientId || CLIENT_ID;
+}
 
 async function getOAuthToken() {
   if (appState.oauthToken) return appState.oauthToken;
@@ -291,7 +295,7 @@ async function getOAuthToken() {
       return;
     }
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
+      client_id: getClientId(),
       scope: SCOPES,
       callback: (resp) => {
         if (resp.error) reject(new Error(resp.error));
@@ -338,7 +342,7 @@ async function writeDriveFile(token, fileId, content) {
 async function triggerSync() {
   if (appState.syncing) return;
   if (!cfg.passphrase) { showPassphraseSetup(); return; }
-  if (CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID_HERE') { showClientIdSetup(); return; }
+  if (!getClientId() || getClientId() === 'YOUR_GOOGLE_CLIENT_ID_HERE') { showClientIdSetup(); return; }
 
   appState.syncing = true;
   setSyncUI('syncing', 'Syncing...');
@@ -463,12 +467,10 @@ function showClientIdSetup() {
 function saveClientId() {
   const v = document.getElementById('cid-input').value.trim();
   if (!v || !v.includes('.apps.googleusercontent.com')) { alert('Paste a valid Google Client ID (ends in .apps.googleusercontent.com)'); return; }
-  // Inject into app — in production, you'd replace the constant in the source file
-  window._runtimeClientId = v;
   cfg.clientId = v;
   saveCfg();
   closeModal();
-  alert('Client ID saved. Reload the app once, then tap Sync again.');
+  triggerSync();
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
