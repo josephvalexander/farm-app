@@ -282,10 +282,10 @@ const NEWS_KEY='vp_news_v1';
 const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
+let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,oauthToken:null,geminiKey:null,pendingSync:false};
+let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -364,12 +364,56 @@ async function decrypt(b64,pp){
 
 // ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 function getClientId(){return cfg.clientId||CID_PH;}
+
+// Silent token refresh — no popup if we already know the account
+// Falls back to interactive popup only on first use or if silent fails
 async function getOAuthToken(){
   if(S.oauthToken)return S.oauthToken;
   return new Promise((res,rej)=>{
     if(typeof google==='undefined'||!google.accounts){rej(new Error('Google API not loaded'));return;}
-    google.accounts.oauth2.initTokenClient({client_id:getClientId(),scope:SCOPES,callback:(r)=>{if(r.error)rej(new Error(r.error));else{S.oauthToken=r.access_token;res(r.access_token);}}}).requestAccessToken();
+    const hint=cfg.googleAccountHint||''; // stored email from last successful auth
+    const onToken=(r)=>{
+      if(r.error){
+        // Silent auth failed — fall back to interactive popup
+        if((r.error==='interaction_required'||r.error==='access_denied')&&hint){
+          client.requestAccessToken({prompt:'select_account'});
+          return;
+        }
+        rej(new Error(r.error));return;
+      }
+      S.oauthToken=r.access_token;
+      // Persist account hint so next call can be silent
+      if(!cfg.googleAccountHint){
+        // Fetch email from tokeninfo and store it
+        fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${r.access_token}`)
+          .then(x=>x.json()).then(d=>{if(d.email){cfg.googleAccountHint=d.email;saveCfg();}})
+          .catch(()=>{});
+      }
+      res(r.access_token);
+    };
+    const client=google.accounts.oauth2.initTokenClient({
+      client_id:getClientId(),scope:SCOPES,
+      hint,
+      callback:onToken
+    });
+    if(hint){
+      // Try silent first — will succeed without popup if session still active
+      client.requestAccessToken({prompt:'none',login_hint:hint});
+    } else {
+      // First time — show account picker
+      client.requestAccessToken({prompt:'select_account'});
+    }
   });
+}
+
+// Call this to force sign-out and re-pick account
+function disconnectGoogle(){
+  S.oauthToken=null;
+  cfg.googleAccountHint=null;
+  saveCfg();
+  if(typeof google!=='undefined'&&google.accounts?.oauth2)
+    google.accounts.oauth2.revoke(S.oauthToken||'',()=>{});
+  showToast('Disconnected — next sync will ask for account');
 }
 async function driveFetch(path,opts={}){
   const tok=await getOAuthToken();
@@ -612,7 +656,7 @@ function deleteItem(type,id){
   setTimeout(()=>triggerSync(false),500);
 }
 
-// ── AI INSIGHTS ENGINE (Gemini) ───────────────────────────────────────────────
+// ── AI INSIGHTS ENGINE (Gemini + Google Search Grounding) ────────────────────
 const INSIGHTS_KEY='vp_insights_v1';
 const INSIGHTS_TTL=24*60*60*1000;
 const KEYS_DRIVE_FILE='vplantations_keys.enc';
@@ -629,11 +673,9 @@ function insightsCacheValid(){
   return cacheDay===todayDay?d:null;
 }
 
-// ── GEMINI KEY — stored encrypted in Drive, never in plain localStorage ───────
+// ── GEMINI KEY — stored encrypted in Drive, never in plain localStorage ─────
 async function loadGeminiKey(){
-  // Try memory first
   if(S.geminiKey)return S.geminiKey;
-  // Try Drive if authed
   if(!cfg.passphrase||!navigator.onLine)return null;
   try{
     const f=await findNamedFile(KEYS_DRIVE_FILE);
@@ -656,9 +698,13 @@ async function saveGeminiKeyToDrive(key){
   S.geminiKey=key;
 }
 
-// ── GEMINI FETCH ──────────────────────────────────────────────────────────────
+// ── GEMINI FETCH (with Google Search grounding) ─────────────────────────────
 async function fetchAIInsights(force=false){
   if(S.fetchingInsights)return;
+  // Hard rate limit: never fire more than once per 60 seconds regardless of other guards
+  const now=Date.now();
+  if(!force&&now-S.lastInsightsTrigger<60000)return;
+  S.lastInsightsTrigger=now;
   const cached=insightsCacheValid();
   if(cached&&!force){renderInsightsCard(cached);return;}
   const key=await loadGeminiKey();
@@ -701,26 +747,26 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
 
     const res=await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {method:'POST',headers:{'Content-Type':'application/json'},
+      {method:'POST',
+       headers:{'Content-Type':'application/json'},
        body:JSON.stringify({
          contents:[{parts:[{text:prompt}]}],
-         generationConfig:{temperature:0.1,maxOutputTokens:1200},
-         safetySettings:[
-           {category:'HARM_CATEGORY_HARASSMENT',threshold:'BLOCK_NONE'},
-           {category:'HARM_CATEGORY_HATE_SPEECH',threshold:'BLOCK_NONE'}
-         ]
+         tools:[{google_search:{}}],
+         generationConfig:{temperature:0.1,maxOutputTokens:1500}
        }),
-       signal:AbortSignal.timeout(20000)
+       signal:AbortSignal.timeout(30000)
       }
     );
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Gemini API error '+res.status);}
     const json=await res.json();
-    const text=json.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    // Gemini may return multiple parts when grounding is used — get the last text part
+    const parts=json.candidates?.[0]?.content?.parts||[];
+    const text=parts.filter(p=>p.text).map(p=>p.text).join('');
     if(!text)throw new Error('Empty response from Gemini');
     const clean=text.replace(/```json|```/g,'').trim();
     let insights;
     try{insights=JSON.parse(clean);}
-    catch(e){throw new Error('Could not parse Gemini response — try again');}
+    catch(e){throw new Error('Could not parse response — try again');}
     saveInsightsCache(insights);
     renderInsightsCard({...insights,ts:Date.now()});
     showToast('Insights updated ✓');
@@ -779,7 +825,7 @@ function renderInsightsLoading(){
     <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
       ${[80,60,100,90,70].map(w=>`<div style="height:12px;width:${w}%;border-radius:6px;background:var(--bor2);animation:pulse 1.4s ease-in-out infinite"></div>`).join('')}
     </div>
-    <p style="font-size:11px;color:var(--tx3);text-align:center;margin-top:10px">Gemini is analysing global cardamom markets…</p>`;
+    <p style="font-size:11px;color:var(--tx3);text-align:center;margin-top:10px">Gemini is searching the web &amp; analysingobal cardamom markets…</p>`;
 }
 
 function insightsErrorHTML(msg){
@@ -839,7 +885,7 @@ function renderInsightsCard(d){
       <div style="font-size:13px;color:var(--tx);line-height:1.5">${d.farmerAdvice}</div>
     </div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-      <p style="font-size:10px;color:var(--tx3)">Gemini AI · Refreshes daily at 5am IST</p>
+      <p style="font-size:10px;color:var(--tx3)">Gemini AI · Live web search · Refreshes daily at 5am IST</p>
       <button onclick="fetchAIInsights(true)" style="background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;font-family:inherit">↻ Refresh</button>
     </div>`;
 }
@@ -847,6 +893,10 @@ function renderInsightsCard(d){
 function initInsights(){
   const cached=insightsCacheValid();
   if(cached){setTimeout(()=>renderInsightsCard(cached),50);return;}
+  // Debounce: ignore if a fetch was triggered in the last 10 seconds
+  const now=Date.now();
+  if(now-S.lastInsightsTrigger<10000)return;
+  S.lastInsightsTrigger=now;
   loadGeminiKey().then(key=>{
     if(key&&navigator.onLine)fetchAIInsights(false);
     else renderInsightsSetup();
@@ -1615,6 +1665,7 @@ function savePrice(){
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+
 // SYNC SETUP
 function showGeminiKeySetup(){
   const masked=S.geminiKey?S.geminiKey.slice(0,8)+'…':'';
@@ -1622,7 +1673,7 @@ function showGeminiKeySetup(){
 <div class="sbox"><h3>Gemini API key</h3>
 <p>Get a <strong>free</strong> key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--bd)">aistudio.google.com</a> → Create API key.</p>
 <p>The key is <strong>encrypted and stored in your Google Drive</strong> — same encryption as your farm data. Never stored in plain text.</p>
-<p>Free tier: 1,500 requests/day — once-a-day usage costs nothing.</p></div>
+<p>Free tier: 1,500 requests/day — once-a-day usage costs nothing. Uses live Google Search to ground every insight.</p></div>
 <div class="fg"><label class="fl">Gemini API Key</label><input id="ak-in" type="password" placeholder="AIza..." autocomplete="off"/></div>
 ${masked?`<p style="font-size:11px;color:var(--tx3);margin-top:-8px">Current key: ${masked} (leave blank to keep)</p>`:''}
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveGeminiKey()">Save to Drive</button></div>`,'Gemini API key');
@@ -1712,18 +1763,6 @@ function saveClientId(){const v=document.getElementById('cid-in').value.trim();i
 
 // ── SETTINGS & BACKUP ─────────────────────────────────────────────────────────
 function renderSettings(){
-  // After render, fetch which Google account is active
-  setTimeout(async()=>{
-    const lbl=document.getElementById('drive-account-label');
-    if(!lbl)return;
-    if(!S.oauthToken){lbl.textContent='Signed-in account: not connected';return;}
-    try{
-      const r=await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${S.oauthToken}`);
-      const d=await r.json();
-      lbl.textContent=`Signed in as: ${d.email||'unknown'}`;
-      lbl.style.color=cfg.sharedFolderId?'var(--gm)':'var(--tx3)';
-    }catch(e){lbl.textContent='Signed-in account: could not verify';}
-  },100);
   const lastSync=cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'Never';
   const counts=`${db.sections.length} sections · ${db.yields.length} yield records · ${db.expenses.length} expenses · ${db.incomes.length} income records`;
   return`
@@ -1753,7 +1792,10 @@ function renderSettings(){
     </button>
   </div>
   <p style="font-size:11px;color:var(--tx3)">Last sync: ${lastSync}</p>
-  <p style="font-size:11px;color:var(--tx3);margin-top:4px" id="drive-account-label">Signed-in account: checking…</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+    <p style="font-size:11px;color:var(--tx3)" id="drive-account-label">${cfg.googleAccountHint?'Signed in as: '+cfg.googleAccountHint:'Not signed in'}</p>
+    ${cfg.googleAccountHint?`<button onclick="disconnectGoogle();render()" style="font-size:11px;color:var(--rd);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Switch account</button>`:''}
+  </div>
 </div>
 
 <div class="card">
@@ -1966,6 +2008,7 @@ function setThemePref(pref){
 
 // ── ROUTER ────────────────────────────────────────────────────────────────────
 function setTab(tab){
+  const prevTab=S.tab;
   // sub-tabs live inside Records
   const recTabs=['yield','expenses','income','drying'];
   if(recTabs.includes(tab)){
@@ -1978,9 +2021,11 @@ function setTab(tab){
     document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
     document.getElementById('nav-'+tab)?.classList.add('active');
   }
+  const wasDashboard=(prevTab==='dashboard'&&S.tab==='dashboard');
   render();
   updateFabVisibility();
-  if(S.tab==='dashboard') initInsights();
+  // Only init insights when actually navigating TO dashboard, not on every render
+  if(S.tab==='dashboard'&&!wasDashboard) initInsights();
 }
 function render(){
   const el=document.getElementById('main-content');if(!el)return;
@@ -2011,6 +2056,7 @@ function updateFabVisibility(){
 
 render();
 updateFabVisibility();
+// Single startup insights init — initInsights handles caching + debounce
 if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
 </script>
