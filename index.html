@@ -274,7 +274,7 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const APP_VERSION='__VERSION__'; // replaced at deploy time — or just increment manually
 const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
-const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.appdata';
+const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.file';
 const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
 const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
 const AUTO_SYNC_INTERVAL=5*60*1000;
@@ -282,7 +282,7 @@ const NEWS_KEY='vp_news_v1';
 const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let cfg={driveFileId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
+let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
 let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,oauthToken:null,geminiKey:null,pendingSync:false};
@@ -375,10 +375,19 @@ async function driveFetch(path,opts={}){
   const tok=await getOAuthToken();
   return fetch('https://www.googleapis.com/'+path,{...opts,headers:{Authorization:'Bearer '+tok,...(opts.headers||{})}});
 }
-async function findFile(){const r=await driveFetch(`drive/v3/files?spaces=appDataFolder&q=name%3D'${DRIVE_FILE}'&fields=files(id)`);const d=await r.json();return d.files?.[0]||null;}
+async function findFile(){
+  const folder=cfg.sharedFolderId;
+  const q=folder
+    ?`name='${DRIVE_FILE}' and '${folder}' in parents and trashed=false`
+    :`name='${DRIVE_FILE}' and trashed=false`;
+  const spaces=folder?'drive':'appDataFolder';
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id)`);
+  const d=await r.json();return d.files?.[0]||null;
+}
 async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media`)).text();}
 async function writeFile(id,content){
-  const meta={name:DRIVE_FILE,parents:id?undefined:['appDataFolder']};
+  const parents=id?undefined:(cfg.sharedFolderId?[cfg.sharedFolderId]:['appDataFolder']);
+  const meta={name:DRIVE_FILE,parents};
   const form=new FormData();
   form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
   form.append('file',new Blob([content],{type:'text/plain'}));
@@ -387,7 +396,12 @@ async function writeFile(id,content){
 
 // ── SYNC ──────────────────────────────────────────────────────────────────────
 async function findNamedFile(name){
-  const r=await driveFetch(`drive/v3/files?spaces=appDataFolder&q=name%3D'${name}'&fields=files(id,name,modifiedTime)`);
+  const folder=cfg.sharedFolderId;
+  const q=folder
+    ?`name='${name}' and '${folder}' in parents and trashed=false`
+    :`name='${name}' and trashed=false`;
+  const spaces=folder?'drive':'appDataFolder';
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)`);
   const d=await r.json();return d.files?.[0]||null;
 }
 
@@ -406,7 +420,8 @@ async function rotateBackups(currentRaw){
 }
 
 async function writeNamedFile(id,name,content){
-  const meta={name,parents:id?undefined:['appDataFolder']};
+  const parents=id?undefined:(cfg.sharedFolderId?[cfg.sharedFolderId]:['appDataFolder']);
+  const meta={name,parents};
   const form=new FormData();
   form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
   form.append('file',new Blob([content],{type:'text/plain'}));
@@ -1648,6 +1663,37 @@ function saveDrying(id){
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
+// SHARED FOLDER SETUP
+function showSharedFolderSetup(){
+  modal(`
+<div class="sbox">
+  <h3>Shared Drive folder</h3>
+  <p>This allows multiple Google accounts to sync to the same data. One person (the host) creates a shared Google Drive folder and shares it with all family members.</p>
+  <p style="margin-top:8px"><strong>To set up:</strong></p>
+  <ol style="margin:8px 0 0 16px;font-size:13px;line-height:1.8;color:var(--tx2)">
+    <li>Open Google Drive on the host account</li>
+    <li>Create a new folder — name it <strong>V-Plantations</strong></li>
+    <li>Right-click → Share → add all family Gmail addresses with <strong>Editor</strong> access</li>
+    <li>Open the folder → copy the folder ID from the URL:<br>
+      <span style="font-family:monospace;font-size:11px;color:var(--bd)">drive.google.com/drive/folders/<strong>THIS_PART</strong></span>
+    </li>
+    <li>Paste the folder ID below on all devices</li>
+  </ol>
+</div>
+<div class="fg"><label class="fl">Shared folder ID</label><input id="sfid-in" type="text" value="${esc(cfg.sharedFolderId||'')}" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74…"/></div>
+<p style="font-size:11px;color:var(--tx3);margin-top:-6px">Leave blank to use personal Drive (original behaviour)</p>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSharedFolderId()">Save</button></div>`,'Shared folder setup');
+}
+function saveSharedFolderId(){
+  const v=document.getElementById('sfid-in').value.trim();
+  cfg.sharedFolderId=v||null;
+  cfg.driveFileId=null; // reset cached file ID — will re-discover in new folder
+  S.oauthToken=null;    // force fresh OAuth so new scope takes effect
+  saveCfg();
+  closeModal();
+  showToast(v?'Shared folder set — tap Sync to connect':'Reverted to personal Drive');
+}
+
 function showPassphraseSetup(){
   modal(`
 <div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with family.</strong></p></div>
@@ -1666,6 +1712,18 @@ function saveClientId(){const v=document.getElementById('cid-in').value.trim();i
 
 // ── SETTINGS & BACKUP ─────────────────────────────────────────────────────────
 function renderSettings(){
+  // After render, fetch which Google account is active
+  setTimeout(async()=>{
+    const lbl=document.getElementById('drive-account-label');
+    if(!lbl)return;
+    if(!S.oauthToken){lbl.textContent='Signed-in account: not connected';return;}
+    try{
+      const r=await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${S.oauthToken}`);
+      const d=await r.json();
+      lbl.textContent=`Signed in as: ${d.email||'unknown'}`;
+      lbl.style.color=cfg.sharedFolderId?'var(--gm)':'var(--tx3)';
+    }catch(e){lbl.textContent='Signed-in account: could not verify';}
+  },100);
   const lastSync=cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'Never';
   const counts=`${db.sections.length} sections · ${db.yields.length} yield records · ${db.expenses.length} expenses · ${db.incomes.length} income records`;
   return`
@@ -1695,6 +1753,7 @@ function renderSettings(){
     </button>
   </div>
   <p style="font-size:11px;color:var(--tx3)">Last sync: ${lastSync}</p>
+  <p style="font-size:11px;color:var(--tx3);margin-top:4px" id="drive-account-label">Signed-in account: checking…</p>
 </div>
 
 <div class="card">
@@ -1710,6 +1769,10 @@ function renderSettings(){
   <div class="row">
     <div><div class="rt">Gemini API key</div><div class="rs">${S.geminiKey?S.geminiKey.slice(0,8)+'…  (stored in Drive)':'Not set — needed for insights'}</div></div>
     <button onclick="showGeminiKeySetup()" class="ia e">${S.geminiKey?'Change':'Set up'}</button>
+  </div>
+  <div class="row">
+    <div><div class="rt">Shared folder</div><div class="rs">${cfg.sharedFolderId?cfg.sharedFolderId.slice(0,20)+'… (multi-account)':'Not set — using personal Drive'}</div></div>
+    <button onclick="showSharedFolderSetup()" class="ia e">${cfg.sharedFolderId?'Change':'Set up'}</button>
   </div>
   <div class="row">
     <div><div class="rt">Passphrase</div><div class="rs">${cfg.passphrase?'Set ✓':'Not set'}</div></div>
