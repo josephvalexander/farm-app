@@ -365,44 +365,34 @@ async function decrypt(b64,pp){
 // ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 function getClientId(){return cfg.clientId||CID_PH;}
 
-// Silent token refresh — no popup if we already know the account
-// Falls back to interactive popup only on first use or if silent fails
+// OAuth token — uses stored account hint to skip account picker after first auth.
+// Does NOT use prompt:'none' (causes silent hangs on mobile Safari).
+// Instead, login_hint pre-selects the account so no manual selection needed.
 async function getOAuthToken(){
   if(S.oauthToken)return S.oauthToken;
   return new Promise((res,rej)=>{
     if(typeof google==='undefined'||!google.accounts){rej(new Error('Google API not loaded'));return;}
-    const hint=cfg.googleAccountHint||''; // stored email from last successful auth
-    const onToken=(r)=>{
-      if(r.error){
-        // Silent auth failed — fall back to interactive popup
-        if((r.error==='interaction_required'||r.error==='access_denied')&&hint){
-          client.requestAccessToken({prompt:'select_account'});
-          return;
-        }
-        rej(new Error(r.error));return;
-      }
-      S.oauthToken=r.access_token;
-      // Persist account hint so next call can be silent
-      if(!cfg.googleAccountHint){
-        // Fetch email from tokeninfo and store it
-        fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${r.access_token}`)
-          .then(x=>x.json()).then(d=>{if(d.email){cfg.googleAccountHint=d.email;saveCfg();}})
-          .catch(()=>{});
-      }
-      res(r.access_token);
-    };
+    const hint=cfg.googleAccountHint||'';
     const client=google.accounts.oauth2.initTokenClient({
-      client_id:getClientId(),scope:SCOPES,
-      hint,
-      callback:onToken
+      client_id:getClientId(),
+      scope:SCOPES,
+      login_hint:hint||undefined,  // pre-selects account, skips picker if hint matches
+      callback:(r)=>{
+        if(r.error){rej(new Error(r.error));return;}
+        S.oauthToken=r.access_token;
+        // Store account email after first successful auth
+        if(!cfg.googleAccountHint){
+          fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${r.access_token}`)
+            .then(x=>x.json()).then(d=>{if(d.email){cfg.googleAccountHint=d.email;saveCfg();}})
+            .catch(()=>{});
+        }
+        res(r.access_token);
+      }
     });
-    if(hint){
-      // Try silent first — will succeed without popup if session still active
-      client.requestAccessToken({prompt:'none',login_hint:hint});
-    } else {
-      // First time — show account picker
-      client.requestAccessToken({prompt:'select_account'});
-    }
+    // Always use prompt:'select_account' on first auth, '' (empty) afterward
+    // Empty prompt with login_hint = silent re-auth if Google session active,
+    // brief consent screen if not — but always resolves, never hangs
+    client.requestAccessToken(hint?{}:{prompt:'select_account'});
   });
 }
 
@@ -478,6 +468,10 @@ async function triggerSync(manual=false){
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
   S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
+  // Safety net: if sync never resolves, reset after 20s to prevent permanent stuck state
+  const syncTimeout=setTimeout(()=>{
+    if(S.syncing){S.syncing=false;setSyncUI('err','Timed out');setTimeout(()=>setSyncUI('idle','Sync'),3000);}
+  },20000);
   try{
     await getOAuthToken();
     const file=await findFile();
@@ -501,6 +495,7 @@ async function triggerSync(manual=false){
       render();
     }
   }catch(e){console.error(e);setSyncUI('err','Failed — retry');}
+  clearTimeout(syncTimeout);
   S.syncing=false;
   setTimeout(()=>setSyncUI('idle','Sync'),3000);
 }
