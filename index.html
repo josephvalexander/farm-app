@@ -246,6 +246,28 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
   </div>
 </div>
 <div class="content" id="main-content"></div>
+
+<div class="fab" id="quick-fab" style="display:none">
+  <div class="fab-items hidden" id="fab-items">
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='yield';render();setTimeout(()=>showEditYield(null),50)">
+      <span class="fab-item-lbl">Add yield</span>
+      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">📈</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='expenses';render();setTimeout(()=>showEditExpense(null),50)">
+      <span class="fab-item-lbl">Add expense</span>
+      <span class="fab-item-btn" style="background:var(--rbg);color:var(--rd)">💸</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='income';render();setTimeout(()=>showEditIncome(null),50)">
+      <span class="fab-item-lbl">Add income</span>
+      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">💰</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='drying';render();setTimeout(()=>showEditDrying(null),50)">
+      <span class="fab-item-lbl">Add drying</span>
+      <span class="fab-item-btn" style="background:var(--abg);color:var(--ad)">☀️</span>
+    </button>
+  </div>
+  <button class="fab-main" id="fab-main-btn" onclick="toggleFab()">+</button>
+</div>
 <div class="nav">
   <button class="nb active" id="nav-dashboard" onclick="setTab('dashboard')">
     <svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>
@@ -506,6 +528,7 @@ async function triggerSync(manual=false){
       const res=await writeFile(null,enc);
       cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
       setSyncUI('ok','Synced ✓');
+      syncGeminiKey();
     } else {
       const raw=await readFile(file.id);
       let cloud;
@@ -520,6 +543,8 @@ async function triggerSync(manual=false){
       setSyncUI('ok','Synced ✓');
       render();
     }
+    // Load Gemini key in background after sync — so all devices pick it up automatically
+    syncGeminiKey();
   }catch(e){console.error(e);setSyncUI('err','Failed — retry');}
   clearTimeout(syncTimeout);
   S.syncing=false;
@@ -787,6 +812,20 @@ async function saveGeminiKeyToDrive(key){
   S.geminiKey=key;
 }
 
+// Silently load Gemini key from Drive after sync — fires & forgets, never blocks
+async function syncGeminiKey(){
+  if(S.geminiKey)return; // already in memory
+  try{
+    const hadKey=!!S.geminiKey;
+    await loadGeminiKey();
+    // If we just got the key for the first time, trigger insights
+    if(!hadKey&&S.geminiKey&&S.tab==='dashboard'){
+      S.lastInsightsTrigger=0; // reset debounce so it fires
+      initInsights();
+    }
+  }catch(e){} // silent — key sync is non-critical
+}
+
 // ── GEMINI FETCH (with Google Search grounding) ─────────────────────────────
 async function fetchAIInsights(force=false){
   if(S.fetchingInsights)return;
@@ -860,9 +899,12 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
     renderInsightsCard({...insights,ts:Date.now()});
     showToast('Insights updated ✓');
   }catch(e){
-    const el=document.getElementById('insights-card-body');
-    const msg=e.message&&e.message.length<80?e.message:'Check your API key or internet connection.';
-    if(el)el.innerHTML=insightsErrorHTML(msg);
+    const msg=e.message&&e.message.length<80?e.message:'Could not load insights. Check your API key or connection.';
+    // Small delay to ensure card body is in DOM after any re-render
+    setTimeout(()=>{
+      const el=document.getElementById('insights-card-body');
+      if(el)el.innerHTML=insightsErrorHTML(msg);
+    },50);
     showToast('Insights unavailable — tap Retry');
   }
   S.fetchingInsights=false;
@@ -895,11 +937,10 @@ function scheduleInsightsFetch(){
 // ── RENDER HELPERS ────────────────────────────────────────────────────────────
 function renderInsightsSetup(){
   const el=document.getElementById('insights-card-body');
-  if(!el)return;
+  if(!el){setTimeout(renderInsightsSetup,100);return;} // retry if not in DOM yet
   el.innerHTML=`
     <p style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:12px">
-      Get daily AI insights on global cardamom markets — Guatemala production, India supply, export demand, price outlook, and advice for Idukki farmers.<br><br>
-      <strong>API key is stored encrypted in your Google Drive</strong> — never in plain text.
+      Get daily AI insights on global cardamom markets — Guatemala production, India supply, export demand, price outlook, and advice for Idukki farmers.
     </p>
     <button onclick="showGeminiKeySetup()" style="width:100%;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
       🔑 Set up Gemini API key
@@ -909,7 +950,7 @@ function renderInsightsSetup(){
 
 function renderInsightsLoading(){
   const el=document.getElementById('insights-card-body');
-  if(!el)return;
+  if(!el){setTimeout(renderInsightsLoading,100);return;}
   el.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
       ${[80,60,100,90,70].map(w=>`<div style="height:12px;width:${w}%;border-radius:6px;background:var(--bor2);animation:pulse 1.4s ease-in-out infinite"></div>`).join('')}
@@ -986,9 +1027,20 @@ function initInsights(){
   const now=Date.now();
   if(now-S.lastInsightsTrigger<10000)return;
   S.lastInsightsTrigger=now;
+  // Show setup prompt immediately if no passphrase (can't load key from Drive)
+  if(!cfg.passphrase){setTimeout(()=>renderInsightsSetup(),50);return;}
   loadGeminiKey().then(key=>{
-    if(key&&navigator.onLine)fetchAIInsights(false);
-    else renderInsightsSetup();
+    if(!key){setTimeout(()=>renderInsightsSetup(),50);return;}
+    if(!navigator.onLine){
+      setTimeout(()=>{
+        const el=document.getElementById('insights-card-body');
+        if(el)el.innerHTML=insightsErrorHTML('No internet connection — insights will load when online.');
+      },50);
+      return;
+    }
+    fetchAIInsights(false);
+  }).catch(()=>{
+    setTimeout(()=>renderInsightsSetup(),50);
   });
 }
 
@@ -2151,27 +2203,6 @@ scheduleInsightsFetch();
 </script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 
-<div class="fab" id="quick-fab" style="display:none">
-  <div class="fab-items hidden" id="fab-items">
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='yield';render();setTimeout(()=>showEditYield(null),50)">
-      <span class="fab-item-lbl">Add yield</span>
-      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">📈</span>
-    </button>
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='expenses';render();setTimeout(()=>showEditExpense(null),50)">
-      <span class="fab-item-lbl">Add expense</span>
-      <span class="fab-item-btn" style="background:var(--rbg);color:var(--rd)">💸</span>
-    </button>
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='income';render();setTimeout(()=>showEditIncome(null),50)">
-      <span class="fab-item-lbl">Add income</span>
-      <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">💰</span>
-    </button>
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='drying';render();setTimeout(()=>showEditDrying(null),50)">
-      <span class="fab-item-lbl">Add drying</span>
-      <span class="fab-item-btn" style="background:var(--abg);color:var(--ad)">☀️</span>
-    </button>
-  </div>
-  <button class="fab-main" id="fab-main-btn" onclick="toggleFab()">+</button>
-</div>
 <script>
 // ── SERVICE WORKER REGISTRATION ───────────────────────────────────────────────
 if('serviceWorker' in navigator){
