@@ -365,22 +365,51 @@ async function decrypt(b64,pp){
 // ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 function getClientId(){return cfg.clientId||CID_PH;}
 
-// OAuth token — uses stored account hint to skip account picker after first auth.
-// Does NOT use prompt:'none' (causes silent hangs on mobile Safari).
-// Instead, login_hint pre-selects the account so no manual selection needed.
+// ── OAUTH TOKEN — persisted in sessionStorage for up to 55 mins ──────────────
+// sessionStorage survives page refreshes within the same tab session.
+// Token is valid for 1hr; we cache for 55min to avoid using an expiring token.
+const TOKEN_SS_KEY='vp_oauth_token';
+const TOKEN_TTL=55*60*1000; // 55 minutes
+
+function loadCachedToken(){
+  try{
+    const raw=sessionStorage.getItem(TOKEN_SS_KEY);
+    if(!raw)return null;
+    const {token,expiry}=JSON.parse(raw);
+    if(Date.now()<expiry)return token;
+    sessionStorage.removeItem(TOKEN_SS_KEY); // expired — clear it
+    return null;
+  }catch(e){return null;}
+}
+function saveTokenToSession(token){
+  try{
+    sessionStorage.setItem(TOKEN_SS_KEY,JSON.stringify({token,expiry:Date.now()+TOKEN_TTL}));
+  }catch(e){}
+}
+function clearCachedToken(){
+  try{sessionStorage.removeItem(TOKEN_SS_KEY);}catch(e){}
+  S.oauthToken=null;
+}
+
 async function getOAuthToken(){
+  // 1. In-memory (fastest — same JS session)
   if(S.oauthToken)return S.oauthToken;
+  // 2. sessionStorage (survives refresh, same tab, up to 55 min)
+  const cached=loadCachedToken();
+  if(cached){S.oauthToken=cached;return cached;}
+  // 3. Request new token — login_hint pre-selects account, skips picker
   return new Promise((res,rej)=>{
     if(typeof google==='undefined'||!google.accounts){rej(new Error('Google API not loaded'));return;}
     const hint=cfg.googleAccountHint||'';
     const client=google.accounts.oauth2.initTokenClient({
       client_id:getClientId(),
       scope:SCOPES,
-      login_hint:hint||undefined,  // pre-selects account, skips picker if hint matches
+      login_hint:hint||undefined,
       callback:(r)=>{
         if(r.error){rej(new Error(r.error));return;}
         S.oauthToken=r.access_token;
-        // Store account email after first successful auth
+        saveTokenToSession(r.access_token); // persist across refreshes
+        // Store account hint on first auth
         if(!cfg.googleAccountHint){
           fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${r.access_token}`)
             .then(x=>x.json()).then(d=>{if(d.email){cfg.googleAccountHint=d.email;saveCfg();}})
@@ -389,20 +418,17 @@ async function getOAuthToken(){
         res(r.access_token);
       }
     });
-    // Always use prompt:'select_account' on first auth, '' (empty) afterward
-    // Empty prompt with login_hint = silent re-auth if Google session active,
-    // brief consent screen if not — but always resolves, never hangs
     client.requestAccessToken(hint?{}:{prompt:'select_account'});
   });
 }
 
 // Call this to force sign-out and re-pick account
 function disconnectGoogle(){
-  S.oauthToken=null;
+  clearCachedToken();
   cfg.googleAccountHint=null;
   saveCfg();
   if(typeof google!=='undefined'&&google.accounts?.oauth2)
-    google.accounts.oauth2.revoke(S.oauthToken||'',()=>{});
+    google.accounts.oauth2.revoke(cfg.googleAccountHint||'',()=>{});
   showToast('Disconnected — next sync will ask for account');
 }
 async function driveFetch(path,opts={}){
@@ -1650,8 +1676,8 @@ function saveSection(id){
 function showEditYield(id){
   const y=id?db.yields.find(x=>x.id===id):null;
   modal(`
+<div class="fg"><label class="fl">Date</label><input id="f-yd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
-<div class="fg"><label class="fl">Month</label><input id="f-yd" type="month" value="${y?.date||new Date().toISOString().slice(0,7)}"/></div>
 <div class="fg"><label class="fl">Yield (kg)</label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveYield('${id||''}')">Save</button></div>`,y?'Edit yield':'Add yield');
   if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;}
@@ -1668,12 +1694,12 @@ function saveYield(id){
 function showEditExpense(id){
   const e=id?db.expenses.find(x=>x.id===id):null;
   modal(`
+<div class="fg"><label class="fl">Date</label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Category</label>
 <select id="f-ec"><option value="labor" ${e?.category==='labor'?'selected':''}>Labor</option><option value="pesticide" ${e?.category==='pesticide'?'selected':''}>Pesticide</option><option value="rawmat" ${e?.category==='rawmat'?'selected':''}>Raw material</option><option value="crop" ${e?.category==='crop'?'selected':''}>Crop</option><option value="other" ${e?.category==='other'?'selected':''}>Other</option></select>
 </div>
 <div class="fg"><label class="fl">Description</label><input id="f-ed" type="text" value="${esc(e?.desc||'')}" placeholder="e.g. Weeding labor"/></div>
 <div class="fg"><label class="fl">Amount (₹)</label><input id="f-ea" type="number" value="${e?.amount||''}" placeholder="5000"/></div>
-<div class="fg"><label class="fl">Date</label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-es">${secOpts()}</select></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveExpense('${id||''}')">Save</button></div>`,e?'Edit expense':'Add expense');
   if(e){const s=document.getElementById('f-es');if(s&&e.sectionId)s.value=e.sectionId;}
@@ -1694,7 +1720,7 @@ function showEditIncome(id){
 <div class="fg"><label class="fl">Quantity sold (kg)</label><input id="f-iq" type="number" value="${i?.qty||''}" placeholder="100"/></div>
 <div class="fg"><label class="fl">Price per kg (₹)</label><input id="f-ip" type="number" value="${i?.pricePerKg||''}" placeholder="Enter price"/></div>
 <div class="fg"><label class="fl">Type</label>
-<select id="f-ity"><option value="dried" ${(i?.type||'dried')==='dried'?'selected':''}>Dried cardamom</option><option value="raw" ${i?.type==='raw'?'selected':''}>Raw / green cardamom</option></select>
+<select id="f-ity"><option value="raw" ${(i?.type||'raw')==='raw'?'selected':''}>Raw / green cardamom</option><option value="dried" ${i?.type==='dried'?'selected':''}>Dried cardamom</option></select>
 </div>
 <div class="fg"><label class="fl">Buyer / market</label><input id="f-ib" type="text" value="${esc(i?.buyer||'')}" placeholder="Vandanmedu auction"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-is">${secOpts()}</select></div>
@@ -1802,7 +1828,7 @@ function saveSharedFolderId(){
   const v=document.getElementById('sfid-in').value.trim();
   cfg.sharedFolderId=v||null;
   cfg.driveFileId=null; // reset cached file ID — will re-discover in new folder
-  S.oauthToken=null;    // force fresh OAuth so new scope takes effect
+  clearCachedToken();   // force fresh OAuth so new scope takes effect
   saveCfg();
   closeModal();
   showToast(v?'Shared folder set — tap Sync to connect':'Reverted to personal Drive');
@@ -2138,6 +2164,10 @@ scheduleInsightsFetch();
     <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='income';render();setTimeout(()=>showEditIncome(null),50)">
       <span class="fab-item-lbl">Add income</span>
       <span class="fab-item-btn" style="background:var(--gbg);color:var(--gm)">💰</span>
+    </button>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='drying';render();setTimeout(()=>showEditDrying(null),50)">
+      <span class="fab-item-lbl">Add drying</span>
+      <span class="fab-item-btn" style="background:var(--abg);color:var(--ad)">☀️</span>
     </button>
   </div>
   <button class="fab-main" id="fab-main-btn" onclick="toggleFab()">+</button>
