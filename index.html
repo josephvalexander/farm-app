@@ -307,7 +307,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,pendingSync:false};
+let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -833,8 +833,9 @@ async function fetchAIInsights(force=false){
   const now=Date.now();
   if(!force&&now-S.lastInsightsTrigger<60000)return;
   S.lastInsightsTrigger=now;
+  S._insightsError=null;
   const cached=insightsCacheValid();
-  if(cached&&!force){renderInsightsCard(cached);return;}
+  if(cached&&!force){if(S.tab==='dashboard')render();return;}
   const key=await loadGeminiKey();
   if(!key){renderInsightsSetup();return;}
   S.fetchingInsights=true;
@@ -896,18 +897,13 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
     try{insights=JSON.parse(clean);}
     catch(e){throw new Error('Could not parse response — try again');}
     saveInsightsCache(insights);
-    renderInsightsCard({...insights,ts:Date.now()});
     showToast('Insights updated ✓');
   }catch(e){
-    const msg=e.message&&e.message.length<80?e.message:'Could not load insights. Check your API key or connection.';
-    // Small delay to ensure card body is in DOM after any re-render
-    setTimeout(()=>{
-      const el=document.getElementById('insights-card-body');
-      if(el)el.innerHTML=insightsErrorHTML(msg);
-    },50);
+    S._insightsError=e.message&&e.message.length<80?e.message:'Could not load insights. Check your API key or connection.';
     showToast('Insights unavailable — tap Retry');
   }
   S.fetchingInsights=false;
+  if(S.tab==='dashboard')render(); // re-render to show result or error via insightsBodyHTML
 }
 
 // ── 5AM IST SCHEDULER ────────────────────────────────────────────────────────
@@ -1021,27 +1017,18 @@ function renderInsightsCard(d){
 }
 
 function initInsights(){
-  const cached=insightsCacheValid();
-  if(cached){setTimeout(()=>renderInsightsCard(cached),50);return;}
-  // Debounce: ignore if a fetch was triggered in the last 10 seconds
+  // Cache valid — render() already shows it via insightsBodyHTML(), nothing to do
+  if(insightsCacheValid())return;
+  // Debounce
   const now=Date.now();
   if(now-S.lastInsightsTrigger<10000)return;
   S.lastInsightsTrigger=now;
-  // Show setup prompt immediately if no passphrase (can't load key from Drive)
-  if(!cfg.passphrase){setTimeout(()=>renderInsightsSetup(),50);return;}
+  if(!cfg.passphrase||!navigator.onLine)return; // insightsBodyHTML shows correct state
+  // Load key then fetch — render() shows loading state via S.fetchingInsights
   loadGeminiKey().then(key=>{
-    if(!key){setTimeout(()=>renderInsightsSetup(),50);return;}
-    if(!navigator.onLine){
-      setTimeout(()=>{
-        const el=document.getElementById('insights-card-body');
-        if(el)el.innerHTML=insightsErrorHTML('No internet connection — insights will load when online.');
-      },50);
-      return;
-    }
-    fetchAIInsights(false);
-  }).catch(()=>{
-    setTimeout(()=>renderInsightsSetup(),50);
-  });
+    if(key)fetchAIInsights(false);
+    // No key: insightsBodyHTML shows setup prompt automatically
+  }).catch(()=>{});
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
@@ -1128,9 +1115,88 @@ cfg.lastSyncTs?`<p class="slog">Last synced ${new Date(cfg.lastSyncTs).toLocaleS
     <span style="font-size:18px;color:var(--tx3);transition:transform 0.2s;display:inline-block;transform:rotate(${insightsOpen?'0':'180'}deg)">⌃</span>
   </div>
   ${insightsOpen?`<div id="insights-card-body" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bor)">
-    <p style="font-size:12px;color:var(--tx3);padding:8px 0;text-align:center">Loading…</p>
+    ${insightsBodyHTML()}
   </div>`:''}
 </div>`;
+}
+
+// Returns the correct insights HTML synchronously based on current state
+function insightsBodyHTML(){
+  // 1. Valid cached data — render it
+  const cached=insightsCacheValid();
+  if(cached){
+    // Render inline — same as renderInsightsCard but returns string instead of setting innerHTML
+    const ol=OUTLOOK_STYLE[cached.outlook]||OUTLOOK_STYLE.neutral;
+    const age=cached.ts?Math.round((Date.now()-cached.ts)/3600000):0;
+    const ageLabel=age<1?'Just now':age<24?age+'h ago':'Yesterday';
+    const conf=cached.confidence||'medium';
+    const factors=(cached.keyFactors||[]).map(f=>`
+      <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)">
+        <div style="font-size:20px;flex-shrink:0;line-height:1.4">${f.icon||'📌'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600;color:var(--tx)">${f.title}</span>
+            <span style="width:7px;height:7px;border-radius:50%;background:${IMPACT_DOT[f.impact]||IMPACT_DOT.neutral};flex-shrink:0;display:inline-block"></span>
+          </div>
+          <div style="font-size:12px;color:var(--tx2);line-height:1.5">${f.detail}</div>
+        </div>
+      </div>`).join('');
+    return `
+      <div style="background:${ol.bg};border:1.5px solid ${ol.border};border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:${ol.color};background:${ol.border};padding:3px 10px;border-radius:10px">${ol.label}</span>
+          <span style="font-size:11px;color:var(--tx3)">${ageLabel} · ${cached.fetchedDate||''}</span>
+          <span style="font-size:10px;color:var(--tx3);margin-left:auto">${CONF_LABEL[conf]||''}</span>
+        </div>
+        <div style="font-size:14px;font-weight:600;color:var(--tx);line-height:1.4">${cached.headline||''}</div>
+        <div style="font-size:12px;color:var(--tx2);margin-top:4px">${cached.outlookReason||''}</div>
+      </div>
+      <div style="margin-bottom:12px">${factors}</div>
+      ${cached.priceOutlook?`
+      <div style="background:var(--sur2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border:1px solid var(--bor)">
+        <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook · 3–6 months</div>
+        <div style="font-size:13px;color:var(--tx2);line-height:1.5">${cached.priceOutlook}</div>
+      </div>`:''}
+      ${cached.farmerAdvice?`
+      <div style="background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);padding:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--gm);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">💡 For Idukki farmers</div>
+        <div style="font-size:13px;color:var(--tx);line-height:1.5">${cached.farmerAdvice}</div>
+      </div>`:''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+        <p style="font-size:10px;color:var(--tx3)">Gemini AI · Live web search · Refreshes daily at 5am IST</p>
+        <button onclick="fetchAIInsights(true)" style="background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;font-family:inherit">↻ Refresh</button>
+      </div>`;
+  }
+  // 2. Currently fetching
+  if(S.fetchingInsights){
+    return `<div style="display:flex;flex-direction:column;gap:8px;padding:4px 0">
+      ${[80,60,100,90,70].map(w=>`<div style="height:12px;width:${w}%;border-radius:6px;background:var(--bor2);animation:pulse 1.4s ease-in-out infinite"></div>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--tx3);text-align:center;margin-top:10px">Gemini is searching the web &amp; analysing markets…</p>`;
+  }
+  // 3. No passphrase or no key
+  if(!cfg.passphrase||!S.geminiKey){
+    return `<p style="font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:12px">
+      Get daily AI insights on global cardamom markets — Guatemala production, India supply, export demand, price outlook, and advice for Idukki farmers.
+    </p>
+    <button onclick="showGeminiKeySetup()" style="width:100%;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
+      🔑 Set up Gemini API key
+    </button>
+    <p style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:center">Free · <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--bd)">Get key at aistudio.google.com</a></p>`;
+  }
+  // 4. Previous fetch errored
+  if(S._insightsError){
+    return `<div style="text-align:center;padding:12px 0">
+      <div style="font-size:22px;margin-bottom:8px">⚠️</div>
+      <div style="font-size:13px;color:var(--tx2);margin-bottom:12px">${S._insightsError}</div>
+      <button onclick="S._insightsError=null;fetchAIInsights(true)" style="padding:9px 20px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--gm);cursor:pointer;font-family:inherit">↻ Retry</button>
+    </div>`;
+  }
+  // 5. Key exists but not fetched yet — show fetch prompt
+  return `<p style="font-size:13px;color:var(--tx2);margin-bottom:12px">Insights refresh daily at 5am IST. Tap to fetch now.</p>
+    <button onclick="fetchAIInsights(true)" style="width:100%;padding:11px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
+      🔍 Fetch insights now
+    </button>`;
 }
 
 
