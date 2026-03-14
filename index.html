@@ -567,49 +567,19 @@ document.addEventListener('visibilitychange',()=>{
 
 // ── PRICE FETCHING ────────────────────────────────────────────────────────────
 // Note: Direct price scraping is blocked by CORS. We use a proxy approach via
-// allorigins.win to fetch Spices Board data, or fall back to manual entry.
+// Fetch live cardamom prices — tries Gemini AI (with web search) first,
+// falls back to allorigins proxy scraping, then prompts manual entry.
 async function fetchLivePrice(){
   if(S.fetchingPrice)return;
   S.fetchingPrice=true;
   const btn=document.getElementById('fetch-btn');
   if(btn){btn.classList.add('fetching');btn.querySelector('span').textContent='Fetching…';}
   try{
-    // Try Spices Board price page via allorigins proxy
-    const url='https://api.allorigins.win/get?url='+encodeURIComponent('https://www.indianspices.com/marketing/price/domestic/daily-price.html');
-    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
-    const json=await r.json();
-    const html=json.contents||'';
-    // Parse cardamom prices from page
-    // The page lists "Small Cardamom" with raw/dried prices
-    let raw=null,dried=null,dateStr=null;
-    // Look for price patterns near "Cardamom"
-    const lines=html.replace(/<[^>]+>/g,' ').split('\n').map(l=>l.trim()).filter(Boolean);
-    for(let i=0;i<lines.length;i++){
-      if(/cardamom/i.test(lines[i])){
-        // Look for numbers in surrounding lines
-        for(let j=i;j<Math.min(i+10,lines.length);j++){
-          const nums=lines[j].match(/\d{3,5}/g);
-          if(nums&&nums.length>=2&&!raw){
-            const v1=parseInt(nums[0]),v2=parseInt(nums[1]);
-            if(v1>500&&v1<20000)raw=v1;
-            if(v2>500&&v2<20000)dried=v2;
-          }
-        }
-        break;
-      }
-    }
-    // Try to find date
-    const dateMatch=html.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
-    if(dateMatch)dateStr=dateMatch[1];
-    if(raw||dried){
-      if(raw)db.priceRaw=raw;
-      if(dried)db.priceDried=dried;
-      db.priceDate=dateStr||new Date().toLocaleDateString('en-IN');
-      db.priceSource='Spices Board (auto)';
-      saveLocal();triggerSync(false);render();
-      showToast('Prices updated from Spices Board');
+    const geminiKey=await loadGeminiKey();
+    if(geminiKey){
+      await fetchPriceViaGemini(geminiKey);
     } else {
-      showToast('Could not parse prices — please update manually');
+      await fetchPriceViaScrape();
     }
   }catch(e){
     console.warn('Price fetch failed:',e);
@@ -618,6 +588,104 @@ async function fetchLivePrice(){
   S.fetchingPrice=false;
   const btn2=document.getElementById('fetch-btn');
   if(btn2){btn2.classList.remove('fetching');btn2.querySelector('span').textContent='Fetch prices';}
+}
+
+async function fetchPriceViaGemini(key){
+  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const prompt=`Today is ${today}. Search for the latest cardamom auction prices in India.
+Find the most recent prices for:
+1. Small Cardamom (Green / Raw) at Vandanmedu or Bodinayakanur auction — price in ₹ per kg
+2. Dried Cardamom at Vandanmedu or Bodinayakanur auction — price in ₹ per kg
+
+Respond ONLY with this JSON, no markdown, no extra text:
+{"raw":NUMBER_OR_NULL,"dried":NUMBER_OR_NULL,"date":"DD Mon YYYY","source":"source name"}
+
+Use null if a price is not found. Numbers must be plain integers (e.g. 2150), no currency symbols.`;
+
+  const res=await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    {method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({
+       contents:[{parts:[{text:prompt}]}],
+       tools:[{google_search:{}}],
+       generationConfig:{temperature:0,maxOutputTokens:200}
+     }),
+     signal:AbortSignal.timeout(15000)
+    }
+  );
+  if(!res.ok)throw new Error('Gemini price fetch failed: '+res.status);
+  const json=await res.json();
+  const parts=json.candidates?.[0]?.content?.parts||[];
+  const text=parts.filter(p=>p.text).map(p=>p.text).join('');
+  if(!text)throw new Error('No response from Gemini');
+  const clean=text.replace(/```json|```/g,'').trim();
+  let data;
+  try{data=JSON.parse(clean);}catch(e){throw new Error('Could not parse price response');}
+  if(!data.raw&&!data.dried)throw new Error('Prices not found');
+  if(data.raw&&data.raw>500&&data.raw<50000)db.priceRaw=data.raw;
+  if(data.dried&&data.dried>500&&data.dried<50000)db.priceDried=data.dried;
+  db.priceDate=data.date||new Date().toLocaleDateString('en-IN');
+  db.priceSource=(data.source||'Gemini web search')+' (auto)';
+  saveLocal();triggerSync(false);render();
+  showToast('Prices updated via Gemini ✓');
+}
+
+async function fetchPriceViaScrape(){
+  // allorigins.win is dead — use corsproxy.io and cors.sh as alternatives
+  const TARGET='https://www.indianspices.com/marketing/price/domestic/daily-price.html';
+  const PROXIES=[
+    'https://corsproxy.io/?'+encodeURIComponent(TARGET),
+    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(TARGET),
+    'https://thingproxy.freeboard.io/fetch/'+TARGET,
+  ];
+  let html='';
+  for(const proxy of PROXIES){
+    try{
+      const r=await fetch(proxy,{signal:AbortSignal.timeout(8000)});
+      if(!r.ok)continue;
+      html=await r.text();
+      if(html.length>500)break; // got a real response
+    }catch(e){continue;}
+  }
+  if(!html){
+    showToast('Auto-fetch failed — set up Gemini key or update manually');
+    return;
+  }
+  // Parse the table — page has columns: Date | Auctioneer | Lots | TotalQty | QtySold | MaxPrice | AvgPrice
+  // We want MaxPrice and AvgPrice for Small Cardamom
+  let maxPrice=null, avgPrice=null, dateStr=null;
+  // Extract after "SMALL CARDAMOM" section
+  const smallSection=html.split(/SMALL CARDAMOM/i)[1]||html;
+  // Find <td> values — strip tags and get numbers
+  const tds=[...smallSection.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+    .map(m=>m[1].replace(/<[^>]+>/g,'').trim())
+    .filter(Boolean);
+  // Find the date (e.g. "14-Mar-2026")
+  for(const td of tds){
+    if(/\d{1,2}-[A-Za-z]{3}-\d{4}/.test(td)){dateStr=td;break;}
+    if(/\d{1,2}\/\d{1,2}\/\d{4}/.test(td)){dateStr=td;break;}
+  }
+  // Find MaxPrice and AvgPrice — they appear as 4-digit numbers in consecutive tds
+  for(let i=0;i<tds.length-1;i++){
+    const v1=parseFloat(tds[i].replace(/,/g,''));
+    const v2=parseFloat(tds[i+1].replace(/,/g,''));
+    if(v1>500&&v1<50000&&v2>500&&v2<50000&&Math.abs(v1-v2)/Math.max(v1,v2)<0.6){
+      maxPrice=Math.round(v1);
+      avgPrice=Math.round(v2);
+      break;
+    }
+  }
+  if(maxPrice||avgPrice){
+    // Show both max and avg — store avg as the "dried" price, max as reference
+    db.priceDried=avgPrice||maxPrice;
+    db.priceRaw=null; // scrape doesn't distinguish raw vs dried
+    db.priceDate=dateStr||new Date().toLocaleDateString('en-IN');
+    db.priceSource='Spices Board · Avg ₹'+(avgPrice||'—')+' Max ₹'+(maxPrice||'—');
+    saveLocal();triggerSync(false);render();
+    showToast('Prices updated from Spices Board ✓');
+  } else {
+    showToast('Could not parse prices — please update manually');
+  }
 }
 
 function showToast(msg){
