@@ -307,7 +307,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
+let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,showAllYield:false,showAllExp:false,showAllInc:false,showAllDry:false,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -413,15 +413,28 @@ function clearCachedToken(){
   S.oauthToken=null;
 }
 
+// Wait for the Google GSI script to finish loading (up to 8s)
+function waitForGoogle(){
+  return new Promise((res,rej)=>{
+    if(typeof google!=='undefined'&&google.accounts){res();return;}
+    let attempts=0;
+    const t=setInterval(()=>{
+      attempts++;
+      if(typeof google!=='undefined'&&google.accounts){clearInterval(t);res();}
+      else if(attempts>40){clearInterval(t);rej(new Error('Google API unavailable'));} // 40×200ms=8s
+    },200);
+  });
+}
+
 async function getOAuthToken(){
   // 1. In-memory (fastest — same JS session)
   if(S.oauthToken)return S.oauthToken;
   // 2. sessionStorage (survives refresh, same tab, up to 55 min)
   const cached=loadCachedToken();
   if(cached){S.oauthToken=cached;return cached;}
-  // 3. Request new token — login_hint pre-selects account, skips picker
+  // 3. Wait for Google API to load (handles slow iOS load), then request token
+  await waitForGoogle();
   return new Promise((res,rej)=>{
-    if(typeof google==='undefined'||!google.accounts){rej(new Error('Google API not loaded'));return;}
     const hint=cfg.googleAccountHint||'';
     const client=google.accounts.oauth2.initTokenClient({
       client_id:getClientId(),
@@ -597,10 +610,12 @@ window.addEventListener('online',()=>{
 });
 window.addEventListener('offline',updateOnlineDot);
 
-// Auto-sync on open
+// Auto-sync on open — wait for Google API to be ready first (important on iOS)
 window.addEventListener('load',()=>{
   updateOnlineDot();
-  setTimeout(()=>triggerSync(false),1500);
+  waitForGoogle()
+    .then(()=>triggerSync(false))
+    .catch(()=>triggerSync(false)); // still try even if wait times out
 });
 
 // Auto-sync every 5 mins
@@ -608,7 +623,11 @@ setInterval(()=>{if(!document.hidden)triggerSync(false);},AUTO_SYNC_INTERVAL);
 
 // Auto-sync when tab becomes visible
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden)triggerSync(false);
+  if(!document.hidden){
+    waitForGoogle()
+      .then(()=>triggerSync(false))
+      .catch(()=>triggerSync(false));
+  }
 });
 
 // ── PRICE FETCHING ────────────────────────────────────────────────────────────
@@ -1037,7 +1056,7 @@ function renderDashboard(){
   const byCat={};db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const maxE=Math.max(...Object.values(byCat),1);
   const bClr={labor:'var(--gl)',pesticide:'var(--rd)',rawmat:'var(--ad)',crop:'var(--bd)',other:'var(--tx3)'};
-  const recent=[...db.yields.slice(-3).map(y=>({t:'y',y,ts:y.createdAt})),...db.incomes.slice(-2).map(i=>({t:'i',i,ts:i.createdAt}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
+  const recent=[...db.yields.map(y=>({t:'y',y,ts:y.createdAt||0})),...db.incomes.map(i=>({t:'i',i,ts:i.createdAt||0})),...db.expenses.map(e=>({t:'e',e,ts:e.createdAt||0}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
   const hasPrice=db.priceRaw||db.priceDried;
   const insightsOpen=S.insightsOpen!==false; // default open
   return`
@@ -1094,9 +1113,10 @@ ${Object.keys(byCat).length?`
 ${recent.length?`
 <div class="card">
   <div class="ct">Recent activity</div>
-  ${recent.map(a=>a.t==='y'
-    ?`<div class="row"><div><div class="rt">Yield — ${secName(a.y.sectionId)}</div><div class="rs">${a.y.date}${a.y.seasonId?' · '+seaName(a.y.seasonId):''}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${a.y.qty} kg</div></div>`
-    :`<div class="row"><div><div class="rt">Sale — ${esc(a.i.buyer||'—')}</div><div class="rs">${fd(a.i.date)} · ${a.i.qty}kg @ ₹${a.i.pricePerKg}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${fc(a.i.qty*a.i.pricePerKg)}</div></div>`
+  ${recent.map(a=>
+    a.t==='y'?`<div class="row"><div><div class="rt">Yield — ${secName(a.y.sectionId)}</div><div class="rs">${a.y.date}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${a.y.qty} kg</div></div>`
+    :a.t==='i'?`<div class="row"><div><div class="rt">Sale — ${esc(a.i.buyer||'—')}</div><div class="rs">${fd(a.i.date)} · ${a.i.qty}kg @ ₹${a.i.pricePerKg}</div></div><div style="color:var(--gm);font-weight:700;margin-left:8px">${fc(a.i.qty*a.i.pricePerKg)}</div></div>`
+    :`<div class="row"><div><div class="rt">Expense — ${esc(a.e.desc)}</div><div class="rs">${CL[a.e.category]||a.e.category}${a.e.date?' · '+fd(a.e.date):''}</div></div><div style="color:var(--rd);font-weight:700;margin-left:8px">${fc(a.e.amount)}</div></div>`
   ).join('')}
 </div>`:''}
 
@@ -1428,8 +1448,14 @@ function renderYield(){
   </div>`:''}
 </div>
 <div class="card">
-  <div class="ct">All records</div>
-  ${db.yields.length===0?'<div class="empty">No records</div>':[...db.yields].reverse().map(y=>`
+  <div class="ct">Records
+    ${db.yields.length>10?`<span style="font-size:11px;color:var(--tx3);margin-left:auto">${db.yields.length} total</span>`:''}
+  </div>
+  ${(()=>{
+    const all=[...db.yields].reverse();
+    const shown=S.showAllYield?all:all.slice(0,10);
+    if(all.length===0)return'<div class="empty">No records</div>';
+    return shown.map(y=>`
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${secName(y.sectionId)}</div>
@@ -1442,7 +1468,8 @@ function renderYield(){
         <button class="ia d" onclick="confirmDel('yield','${y.id}','${y.qty}kg on ${y.date}')">Del</button>
       </div>
     </div>
-  </div>`).join('')}
+  </div>`).join('')+(all.length>10?`<button onclick="S.showAllYield=!S.showAllYield;render()" style="width:100%;margin-top:10px;padding:9px;background:transparent;border:1px solid var(--bor2);border-radius:var(--rs);font-size:12px;color:var(--tx3);cursor:pointer;font-family:inherit">${S.showAllYield?'Show less ↑':'Show all '+all.length+' records ↓'}</button>`:'');
+  })()}
 </div>`;
 }
 
@@ -1487,7 +1514,11 @@ function renderExpenses(){
       ${['all','labor','pesticide','rawmat','crop','other'].map(c=>`<button onclick="S.expTab='${c}';render()" style="padding:3px 8px;font-size:10px;border-radius:10px;border:1px solid ${t===c?'var(--bd)':'var(--bor2)'};background:${t===c?'var(--bbg)':'transparent'};color:${t===c?'var(--bd)':'var(--tx3)'};cursor:pointer;font-family:inherit">${c==='all'?'All':CL[c]||c}</button>`).join('')}
     </span>
   </div>
-  ${filtered.length===0?`<div class="empty">No expenses${t!=='all'?' in this category':''}</div>`:[...filtered].sort((a,b)=>b.date?.localeCompare(a.date||'')||0).map(e=>`
+  ${(()=>{
+    const all=[...filtered].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+    if(all.length===0)return`<div class="empty">No expenses${t!=='all'?' in this category':''}</div>`;
+    const shown=S.showAllExp?all:all.slice(0,10);
+    return shown.map(e=>`
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${esc(e.desc)}</div>
@@ -1500,7 +1531,8 @@ function renderExpenses(){
         <button class="ia d" onclick="confirmDel('expense','${e.id}','${esc(e.desc)}')">Del</button>
       </div>
     </div>
-  </div>`).join('')}
+  </div>`).join('')+(all.length>10?`<button onclick="S.showAllExp=!S.showAllExp;render()" style="width:100%;margin-top:10px;padding:9px;background:transparent;border:1px solid var(--bor2);border-radius:var(--rs);font-size:12px;color:var(--tx3);cursor:pointer;font-family:inherit">${S.showAllExp?'Show less ↑':'Show all '+all.length+' expenses ↓'}</button>`:'');
+  })()}
 </div>`;
 }
 
@@ -1544,8 +1576,14 @@ function renderIncome(){
   </div>`:''}
 </div>
 <div class="card">
-  <div class="ct">Income records</div>
-  ${db.incomes.length===0?`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><circle cx="10" cy="10" r="7" stroke-linecap="round"/><path stroke-linecap="round" d="M10 6.5v3.5l2.5 1.5"/></svg><br>No income recorded</div>`:[...db.incomes].sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`
+  <div class="ct">Income records
+    ${db.incomes.length>10?`<span style="font-size:11px;color:var(--tx3);margin-left:auto">${db.incomes.length} total</span>`:''}
+  </div>
+  ${(()=>{
+    const all=[...db.incomes].sort((a,b)=>b.date.localeCompare(a.date));
+    if(all.length===0)return`<div class="empty"><svg viewBox="0 0 20 20" fill="none" stroke-width="1.5"><circle cx="10" cy="10" r="7" stroke-linecap="round"/><path stroke-linecap="round" d="M10 6.5v3.5l2.5 1.5"/></svg><br>No income recorded</div>`;
+    const shown=S.showAllInc?all:all.slice(0,10);
+    return shown.map(i=>`
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${esc(i.buyer||'—')} <span style="font-size:10px;color:var(--tx3);font-weight:500;background:var(--bor2);padding:1px 5px;border-radius:8px;margin-left:3px">${i.type==='raw'?'Raw':'Dried'}</span></div>
@@ -1559,7 +1597,8 @@ function renderIncome(){
         <button class="ia d" onclick="confirmDel('income','${i.id}','sale ${fd(i.date)}')">Del</button>
       </div>
     </div>
-  </div>`).join('')}
+  </div>`).join('')+(all.length>10?`<button onclick="S.showAllInc=!S.showAllInc;render()" style="width:100%;margin-top:10px;padding:9px;background:transparent;border:1px solid var(--bor2);border-radius:var(--rs);font-size:12px;color:var(--tx3);cursor:pointer;font-family:inherit">${S.showAllInc?'Show less ↑':'Show all '+all.length+' records ↓'}</button>`:'');
+  })()}
 </div>`;
 }
 
@@ -1612,11 +1651,17 @@ function renderDrying(){
 </div>
 
 <div class="card">
-  <div class="ct">Drying records</div>
-  ${db.dryings.length===0?`<div class="empty">No drying records yet</div>`:[...db.dryings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(d=>{
-    const ratio=d.rawQty>0?((d.driedQty/d.rawQty)*100).toFixed(1):0;
-    const ratioColor=ratio>=22?'var(--gm)':'var(--rd)';
-    return`<div class="row">
+  <div class="ct">Drying records
+    ${db.dryings.length>10?`<span style="font-size:11px;color:var(--tx3);margin-left:auto">${db.dryings.length} total</span>`:''}
+  </div>
+  ${(()=>{
+    const all=[...db.dryings].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    if(all.length===0)return'<div class="empty">No drying records yet</div>';
+    const shown=S.showAllDry?all:all.slice(0,10);
+    return shown.map(d=>{
+      const ratio=d.rawQty>0?((d.driedQty/d.rawQty)*100).toFixed(1):0;
+      const ratioColor=ratio>=22?'var(--gm)':'var(--rd)';
+      return`<div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${fd(d.date)}${d.notes?' · '+esc(d.notes):''}</div>
       <div class="rs">${d.rawQty}kg raw → ${d.driedQty}kg dried</div>
@@ -1628,7 +1673,8 @@ function renderDrying(){
         <button class="ia d" onclick="confirmDel('drying','${d.id}','drying ${fd(d.date)}')">Del</button>
       </div>
     </div>
-  </div>`;}).join('')}
+  </div>`;}).join('')+(all.length>10?`<button onclick="S.showAllDry=!S.showAllDry;render()" style="width:100%;margin-top:10px;padding:9px;background:transparent;border:1px solid var(--bor2);border-radius:var(--rs);font-size:12px;color:var(--tx3);cursor:pointer;font-family:inherit">${S.showAllDry?'Show less ↑':'Show all '+all.length+' records ↓'}</button>`:'');
+  })()}
 </div>`;
 }
 
@@ -1973,6 +2019,38 @@ function renderSettings(){
   const lastSync=cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'Never';
   const counts=`${db.sections.length} sections · ${db.yields.length} yield records · ${db.expenses.length} expenses · ${db.incomes.length} income records`;
   return`
+
+<div class="card">
+  <div class="ct">Add to home screen</div>
+  <p style="font-size:13px;color:var(--tx2);line-height:1.6;margin-bottom:14px">Install V-Plantations as an app on your phone for quick access — works like a native app with no browser bars.</p>
+  <div id="a2hs-content">
+    <div style="background:var(--bbg);border:1.5px solid var(--bbr);border-radius:var(--rs);padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--bd);margin-bottom:6px">📱 iPhone / iPad (Safari)</div>
+      <ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.9">
+        <li>Open this page in <strong>Safari</strong></li>
+        <li>Tap the <strong>Share</strong> button (box with arrow at bottom)</li>
+        <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+        <li>Tap <strong>Add</strong> — done</li>
+      </ol>
+    </div>
+    <div style="background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--gm);margin-bottom:6px">🤖 Android (Chrome)</div>
+      <ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.9">
+        <li>Open this page in <strong>Chrome</strong></li>
+        <li>Tap the <strong>⋮ menu</strong> (top right)</li>
+        <li>Tap <strong>"Add to Home screen"</strong></li>
+        <li>Tap <strong>Add</strong> — done</li>
+      </ol>
+    </div>
+    <div id="a2hs-btn-wrap" style="display:none">
+      <button id="a2hs-btn" onclick="triggerA2HS()" style="width:100%;padding:12px;background:var(--gbg);border:1.5px solid var(--gbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--gm);cursor:pointer;font-family:inherit">
+        ＋ Add to home screen
+      </button>
+    </div>
+    <p style="font-size:11px;color:var(--tx3);margin-top:8px">Once installed, it opens full-screen with no browser bar, just like a native app.</p>
+  </div>
+</div>
+
 <div class="card">
   <div class="ct">Export &amp; Import</div>
   <p style="font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.5">Export saves all your data as a <strong>JSON file</strong> to your phone. Import loads it back. Use this as a manual backup any time.</p>
@@ -2260,6 +2338,29 @@ function updateFabVisibility(){
   const fab=document.getElementById('quick-fab');
   if(fab) fab.style.display=S.tab==='dashboard'?'flex':'none';
 }
+
+// ── ADD TO HOME SCREEN ────────────────────────────────────────────────────────
+let _a2hsPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  _a2hsPrompt=e;
+  // Show the native install button on Android Chrome
+  const wrap=document.getElementById('a2hs-btn-wrap');
+  if(wrap)wrap.style.display='block';
+});
+function triggerA2HS(){
+  if(_a2hsPrompt){
+    _a2hsPrompt.prompt();
+    _a2hsPrompt.userChoice.then(r=>{
+      if(r.outcome==='accepted')showToast('Added to home screen ✓');
+      _a2hsPrompt=null;
+    });
+  }
+}
+window.addEventListener('appinstalled',()=>{
+  showToast('V-Plantations installed ✓');
+  _a2hsPrompt=null;
+});
 
 render();
 updateFabVisibility();
