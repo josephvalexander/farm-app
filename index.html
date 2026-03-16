@@ -683,7 +683,7 @@ Respond ONLY with this JSON, no markdown, no extra text:
 Use null if a price is not found. Numbers must be plain integers (e.g. 2150), no currency symbols.`;
 
   const res=await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
     {method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify({
        contents:[{parts:[{text:prompt}]}],
@@ -914,14 +914,14 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
     });
 
     let res=await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
       {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(30000)}
     );
     // On 429 wait 5s and retry once
     if(res.status===429){
       await new Promise(r=>setTimeout(r,5000));
       res=await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
         {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(30000)}
       );
     }
