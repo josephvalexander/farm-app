@@ -941,12 +941,7 @@ Provide exactly 4-5 keyFactors. Be factual and concise.`;
       const reason=json.candidates?.[0]?.finishReason||'unknown';
       throw new Error('No text in response (finishReason: '+reason+')');
     }
-    const clean=text.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,m=>{
-      // Extract just the JSON part from code blocks
-      return m.replace(/```json
-?|```
-?/g,'').trim();
-    }).trim();
+    const clean=text.replace(/```json\n?|```\n?/g,'').trim();
     let insights;
     try{insights=JSON.parse(clean);}
     catch(e){
