@@ -32,3 +32,4 @@ jobs:
 
       - name: Push
         run: git push
+
