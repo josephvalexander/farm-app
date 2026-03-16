@@ -1,7 +1,7 @@
 // ── V-PLANTATIONS SERVICE WORKER ─────────────────────────────────────────────
-// Increment CACHE_VERSION every deployment to force update on all devices.
-// If using GitHub Actions, replace this with a build step that injects the git SHA.
-const CACHE_VERSION = 'vp-bc6ccbf';
+// CACHE_VERSION is auto-updated by GitHub Actions on every push to main.
+// Do not edit this line manually — it will be overwritten on next deploy.
+const CACHE_VERSION = 'vp-dev';
 const CACHE_NAME = `vplantations-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [

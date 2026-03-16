@@ -421,7 +421,7 @@ function waitForGoogle(){
     const t=setInterval(()=>{
       attempts++;
       if(typeof google!=='undefined'&&google.accounts){clearInterval(t);res();}
-      else if(attempts>40){clearInterval(t);rej(new Error('Google API unavailable'));} // 40×200ms=8s
+      else if(attempts>60){clearInterval(t);rej(new Error('Google API unavailable'));} // 60×200ms=12s
     },200);
   });
 }
@@ -528,6 +528,8 @@ async function triggerSync(manual=false){
   if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
+  // On auto-sync with no cached token: skip silently — avoid iOS PWA auth popup hang
+  if(!manual&&!S.oauthToken&&!loadCachedToken()){return;}
   S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
   // Safety net: if sync never resolves, reset after 20s to prevent permanent stuck state
   const syncTimeout=setTimeout(()=>{
@@ -610,23 +612,36 @@ window.addEventListener('online',()=>{
 });
 window.addEventListener('offline',updateOnlineDot);
 
-// Auto-sync on open — wait for Google API to be ready first (important on iOS)
+// Auto-sync on open — only attempt if we already have a cached token.
+// On iOS PWA, requesting a new token without user gesture causes a silent hang.
+// If no token cached, just show idle state — user taps Sync when ready.
 window.addEventListener('load',()=>{
   updateOnlineDot();
-  waitForGoogle()
-    .then(()=>triggerSync(false))
-    .catch(()=>triggerSync(false)); // still try even if wait times out
+  const hasToken=!!loadCachedToken();
+  if(hasToken){
+    // Token in hand — wait for Google API then sync silently
+    waitForGoogle()
+      .then(()=>triggerSync(false))
+      .catch(()=>{}); // Google API unavailable — skip, don't show error
+  } else {
+    // No token — schedule a gentle delayed attempt after user may have interacted
+    // This handles the case where the app was freshly installed / token expired
+    setTimeout(()=>{
+      if(loadCachedToken())triggerSync(false); // token appeared (e.g. via another tab)
+      // else: stay idle, user will tap Sync button which triggers auth properly
+    },3000);
+  }
 });
 
 // Auto-sync every 5 mins
 setInterval(()=>{if(!document.hidden)triggerSync(false);},AUTO_SYNC_INTERVAL);
 
-// Auto-sync when tab becomes visible
+// Auto-sync when app comes back to foreground — only if token cached
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden){
+  if(!document.hidden&&loadCachedToken()){
     waitForGoogle()
       .then(()=>triggerSync(false))
-      .catch(()=>triggerSync(false));
+      .catch(()=>{});
   }
 });
 
@@ -893,28 +908,53 @@ Respond ONLY with a valid JSON object — no markdown, no explanation, no text o
 
 Provide exactly 4-5 keyFactors. Be factual and concise.`;
 
-    const res=await fetch(
+    // Try with search grounding first, fall back without if it fails
+    const makeBody=(withSearch)=>JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      ...(withSearch?{tools:[{google_search:{}}]}:{}),
+      generationConfig:{temperature:0.1,maxOutputTokens:1500}
+    });
+
+    let res=await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-      {method:'POST',
-       headers:{'Content-Type':'application/json'},
-       body:JSON.stringify({
-         contents:[{parts:[{text:prompt}]}],
-         tools:[{google_search:{}}],
-         generationConfig:{temperature:0.1,maxOutputTokens:1500}
-       }),
-       signal:AbortSignal.timeout(30000)
-      }
+      {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(true),signal:AbortSignal.timeout(30000)}
     );
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Gemini API error '+res.status);}
+    // If search grounding fails (not enabled for key), retry without it
+    if(!res.ok){
+      const errData=await res.json().catch(()=>({}));
+      const errMsg=errData.error?.message||'';
+      if(res.status===400||errMsg.toLowerCase().includes('tool')||errMsg.toLowerCase().includes('grounding')||errMsg.toLowerCase().includes('search')){
+        res=await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+          {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(false),signal:AbortSignal.timeout(30000)}
+        );
+        if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Gemini API error '+res.status);}
+      } else {
+        throw new Error(errMsg||'Gemini API error '+res.status);
+      }
+    }
     const json=await res.json();
-    // Gemini may return multiple parts when grounding is used — get the last text part
     const parts=json.candidates?.[0]?.content?.parts||[];
     const text=parts.filter(p=>p.text).map(p=>p.text).join('');
-    if(!text)throw new Error('Empty response from Gemini');
-    const clean=text.replace(/```json|```/g,'').trim();
+    if(!text){
+      // Surface the actual finish reason to help debug
+      const reason=json.candidates?.[0]?.finishReason||'unknown';
+      throw new Error('No text in response (finishReason: '+reason+')');
+    }
+    const clean=text.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,m=>{
+      // Extract just the JSON part from code blocks
+      return m.replace(/```json
+?|```
+?/g,'').trim();
+    }).trim();
     let insights;
     try{insights=JSON.parse(clean);}
-    catch(e){throw new Error('Could not parse response — try again');}
+    catch(e){
+      // Sometimes Gemini wraps the JSON in extra text — try to extract it
+      const match=clean.match(/\{[\s\S]*\}/);
+      if(match){try{insights=JSON.parse(match[0]);}catch(e2){throw new Error('Could not parse Gemini response');}}
+      else throw new Error('Could not parse Gemini response');
+    }
     saveInsightsCache(insights);
     showToast('Insights updated ✓');
   }catch(e){
