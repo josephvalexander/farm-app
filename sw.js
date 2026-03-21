@@ -1,7 +1,7 @@
 // ── V-PLANTATIONS SERVICE WORKER ─────────────────────────────────────────────
 // CACHE_VERSION is auto-updated by GitHub Actions on every push to main.
 // Do not edit this line manually — it will be overwritten on next deploy.
-const CACHE_VERSION = 'vp-f640787';
+const CACHE_VERSION = 'vp-65c6985';
 const CACHE_NAME = `vplantations-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
