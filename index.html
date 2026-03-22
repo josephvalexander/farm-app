@@ -2177,10 +2177,46 @@ function renderSettings(){
 <div class="card">
   <div class="ct">Danger zone</div>
   <p style="font-size:13px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Clear all local data from this device. Drive data is not affected — you can re-sync to restore.</p>
-  <button onclick="confirmClearLocal()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit">
+  <button onclick="confirmClearLocal()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit;margin-bottom:10px">
     🗑 Clear local data
   </button>
-</div>`;
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Getting "Wrong passphrase" errors? The Drive file may be corrupted. Delete it and re-upload a fresh copy.</p>
+  <button onclick="confirmResetDrive()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit">
+    ☁️ Reset Drive sync file
+  </button>
+</div>\`;
+}
+
+// RESET DRIVE FILE — deletes the corrupted Drive file so next sync creates a fresh one
+async function resetDriveFile(){
+  closeModal();
+  setSyncUI('syncing','Resetting…');
+  try{
+    await getOAuthToken();
+    const file=await findFile();
+    if(file){
+      await driveFetch(`drive/v3/files/${file.id}`,{method:'DELETE'});
+      showToast('Drive file deleted — tap Sync to create a fresh one');
+    } else {
+      showToast('No Drive file found — tap Sync to create one');
+    }
+    // Also clear local driveFileId so we don't try to update the deleted file
+    cfg.driveFileId=null;saveCfg();
+  }catch(e){
+    console.error('Reset failed:',e);
+    showToast('Reset failed: '+e.message);
+  }
+  setSyncUI('idle','Sync');
+}
+
+function confirmResetDrive(){
+  modal(`
+<div class="sbox" style="border-color:var(--rbr);background:var(--rbg)">
+  <p style="color:var(--rd);font-weight:700;margin-bottom:6px">⚠️ Delete Drive file?</p>
+  <p style="font-size:13px;color:var(--tx2);line-height:1.5">This deletes the encrypted file from Google Drive. Your local data on this device is kept. After deleting, tap Sync to upload a fresh copy — all devices will then be able to sync again.</p>
+  <p style="font-size:12px;color:var(--tx3);margin-top:8px">Use this if you are getting a "Wrong passphrase" error that won't go away.</p>
+</div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnd" onclick="resetDriveFile()">Delete &amp; reset</button></div>`,'Reset Drive sync');
 }
 
 // EXPORT JSON
