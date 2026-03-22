@@ -647,7 +647,11 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 
-// ── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
+// ── UTILITY FUNCTIONS & CONSTANTS ────────────────────────────────────────────
+const CL={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw material',crop:'Crop expense',other:'Other'};
+function showToast(msg){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:var(--sur);border:1px solid var(--bor2);color:var(--tx);padding:10px 18px;border-radius:20px;font-size:13px;font-weight:500;z-index:200;max-width:300px;text-align:center;pointer-events:none';document.body.appendChild(t);}t.textContent=msg;t.style.opacity='1';clearTimeout(t._to);t._to=setTimeout(()=>{t.style.opacity='0';},2800);}
+function modal(body,title=''){const r=document.getElementById('modal-root');r.innerHTML=`<div class="mo" onclick="if(event.target===this)closeModal()"><div class="mc"><div class="mh">${title?`<div class="mt">${title}</div>`:''}<button onclick="closeModal()" class="mx">✕</button></div><div class="mb">${body}</div></div></div>`;r.querySelector('input,textarea,select')?.focus();}
+function seaName(id){return'';}
 function fc(n){return'₹'+Math.abs(Math.round(n)).toLocaleString('en-IN');}
 function fd(d){if(!d)return'';try{const p=d.split('-');if(p.length===3){const dt=new Date(+p[0],+p[1]-1,+p[2]);return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'});}return d;}catch(e){return d;}}
 function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):'';} 
@@ -1528,16 +1532,7 @@ ${db.expenses.length===0?`
 }
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
-function modal(body,title){
-  document.getElementById('modal-root').innerHTML=`
-    <div class="mo" onclick="if(event.target===this)closeModal()">
-      <div class="md">
-        <div class="mh"></div>
-        ${title?`<div class="mt">${title}</div>`:''}
-        ${body}
-      </div>
-    </div>`;
-}
+
 function closeModal(){document.getElementById('modal-root').innerHTML='';}
 
 function confirmDel(type,id,label){
