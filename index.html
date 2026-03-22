@@ -859,49 +859,54 @@ async function fetchAIInsights(force=false){
   renderInsightsLoading();
   try{
     const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-    const prompt=`Today is ${today}. You are a commodity news analyst. Your task is to search the web RIGHT NOW and compile a market intelligence briefing for a cardamom farmer in Thopramkudy, Idukki, Kerala, India.
+    const cutoff=new Date(Date.now()-30*24*3600000).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+    const prompt=`Today is ${today}. You are a commodity news analyst. Your task is to search the web and compile a market intelligence briefing for a cardamom farmer in Thopramkudy, Idukki, Kerala, India.
+
+LOOKBACK WINDOW: Search for news and data from the last 30 days (since ${cutoff}). Do not limit yourself to only today — recent weeks are equally valuable for understanding market trends.
 
 CRITICAL RULES — strictly enforced:
-- Every single fact, price, statistic, or claim MUST come from a web search result you find today.
-- Do NOT use your training data or memory for any factual claim.
-- If a web search returns no result for a topic, write exactly "No recent data found" for that field — do not substitute with guesses, estimates, or general knowledge.
+- Every single fact, price, statistic, or claim MUST come from a web search result dated within the last 30 days.
+- Do NOT use training data or memory for any factual claim. Only use what you find via web search.
+- If no web search result is found for a topic within the last 30 days, write "No data found in last 30 days" — do not substitute with guesses or general knowledge.
 - Do NOT invent auction prices, weather conditions, export volumes, or policy details.
-- Do NOT say things like "typically", "historically", "generally", or "tends to" — these signal memory-based hallucination.
-- Only include a keyFactor if you found a real, datable news source for it today.
+- Do NOT use phrases like "typically", "historically", "generally", "tends to" — these signal memory-based hallucination.
+- Always include the date of each source you cite. If you cannot find a date, say so.
+- Only include a keyFactor if you found a real, datable news source from the last 30 days.
 
-Search for ALL of the following right now:
-1. Latest cardamom auction prices at Vandanmedu, Bodinayakanur, or Kumily — last 7 days
-2. Cardamom news in Kerala — latest crop reports, rainfall, harvest updates from Idukki or Wayanad
-3. Guatemala cardamom production news — any recent export or crop updates
-4. India cardamom export news — Spices Board of India announcements, APEDA data
-5. Global cardamom demand news — Middle East, Europe, Saudi Arabia imports
-6. Any weather alerts affecting Kerala hill districts (Idukki, Munnar, Cardamom Hills)
-7. INR/USD exchange rate today — affects export competitiveness
-8. Any Indian government policy news affecting spice farmers — MSP, subsidies, export incentives
+Search for ALL of the following — look back up to 30 days:
+1. Cardamom auction prices at Vandanmedu, Bodinayakanur, or Kumily — last 30 days (include specific price figures and dates found)
+2. Cardamom crop and harvest news in Kerala — Idukki, Wayanad, Munnar — last 30 days
+3. Rainfall and weather conditions in Kerala Cardamom Hills — last 30 days
+4. Guatemala cardamom production and export news — last 30 days
+5. India cardamom export data — Spices Board of India, APEDA — last 30 days
+6. Global cardamom demand — Middle East (Saudi Arabia, UAE), Europe — last 30 days
+7. INR/USD exchange rate trend — last 30 days (affects export competitiveness)
+8. Indian government policy for spice farmers — MSP, subsidies, export incentives — last 30 days
+9. Any pest, disease, or supply disruption news for cardamom — last 30 days
 
 Respond ONLY with a valid JSON object — no markdown, no text before or after the JSON:
 {
-  "headline": "One sentence from actual news found today — if no news found write 'No major developments found today'",
+  "headline": "One sentence summarising the most important market development from the last 30 days",
   "outlook": "bullish" | "bearish" | "neutral" | "volatile",
-  "outlookReason": "One sentence based only on news found — cite the source briefly e.g. (Spices Board, 22 Mar)",
+  "outlookReason": "One sentence based only on search results found — cite source and date e.g. (Spices Board, 15 Mar 2026)",
   "keyFactors": [
     {
       "icon": "relevant emoji",
       "title": "Short factor title",
-      "detail": "2-3 sentences from actual search results only. Include source name and date. If no data found write 'No recent news found for this topic.'",
+      "detail": "2-3 sentences from actual search results only. Include source name and date. Write 'No data found in last 30 days' if nothing found.",
       "impact": "positive" | "negative" | "neutral",
-      "source": "Source name and date if available, else 'Not found'"
+      "source": "Source name and date e.g. 'The Hindu, 10 Mar 2026' — or 'Not found' if unavailable"
     }
   ],
-  "keralaUpdate": "2-3 sentences on Kerala-specific cardamom news — local auction prices, rainfall, harvest conditions in Idukki/Wayanad from search results. Write 'No Kerala-specific news found today' if nothing found.",
-  "globalUpdate": "2-3 sentences on global market news — Guatemala, Middle East demand, exports. Write 'No global news found today' if nothing found.",
-  "priceOutlook": "Based only on news found today, 1-2 sentences on near-term price direction. If no price data found write 'Insufficient data for price outlook today'.",
-  "farmerAdvice": "1-2 sentences of practical advice based strictly on today's news findings. Do not give generic advice.",
+  "keralaUpdate": "2-3 sentences on Kerala-specific cardamom news from the last 30 days — auction prices, rainfall, harvest, Idukki/Wayanad conditions. Cite dates. Write 'No Kerala news found in last 30 days' if nothing found.",
+  "globalUpdate": "2-3 sentences on global market news from the last 30 days — Guatemala supply, Middle East demand, export trends. Cite dates. Write 'No global news found in last 30 days' if nothing found.",
+  "priceOutlook": "Based on price data and news found in the last 30 days, 2-3 sentences on near-term price direction with reasoning. Write 'Insufficient data in last 30 days for price outlook' if no data found.",
+  "farmerAdvice": "1-2 sentences of specific actionable advice for an Idukki cardamom farmer based on what was found in the last 30 days. Do not give generic advice.",
   "fetchedDate": "${today}",
   "dataQuality": "high" | "partial" | "low"
 }
 
-Provide 4-6 keyFactors, but ONLY for topics where you found actual news. Do not pad with generic factors.`;
+Provide 4-6 keyFactors, but ONLY for topics where you found actual news from the last 30 days. Do not pad with generic factors.`;
 
     // Use Google Search grounding — every fact must come from a live web source
     // Try with grounding first, fall back without if key doesn't have it enabled
