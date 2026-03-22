@@ -647,6 +647,13 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 
+// ── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
+function fc(n){return'₹'+Math.abs(Math.round(n)).toLocaleString('en-IN');}
+function fd(d){if(!d)return'';try{const p=d.split('-');if(p.length===3){const dt=new Date(+p[0],+p[1]-1,+p[2]);return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'2-digit'});}return d;}catch(e){return d;}}
+function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):'';} 
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function secName(id){const s=db.sections.find(x=>x.id===id);return s?esc(s.name):'Unknown';}
+
 // ── HELPER TOTALS ────────────────────────────────────────────────────────────
 function totalInc(){return db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);}
 function totalExp(){return db.expenses.reduce((s,e)=>s+(e.amount||0),0);}
