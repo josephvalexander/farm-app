@@ -794,55 +794,80 @@ async function fetchAIInsights(force=false){
   renderInsightsLoading();
   try{
     const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-    const prompt=`You are an agricultural commodity analyst specialising in cardamom. Today is ${today}.
+    const prompt=`Today is ${today}. You are a commodity news analyst. Your task is to search the web RIGHT NOW and compile a market intelligence briefing for a cardamom farmer in Thopramkudy, Idukki, Kerala, India.
 
-Using your knowledge of global cardamom markets, provide a structured market intelligence briefing for an Indian cardamom farmer in Thopramkudy, Idukki district, Kerala.
+CRITICAL RULES — strictly enforced:
+- Every single fact, price, statistic, or claim MUST come from a web search result you find today.
+- Do NOT use your training data or memory for any factual claim.
+- If a web search returns no result for a topic, write exactly "No recent data found" for that field — do not substitute with guesses, estimates, or general knowledge.
+- Do NOT invent auction prices, weather conditions, export volumes, or policy details.
+- Do NOT say things like "typically", "historically", "generally", or "tends to" — these signal memory-based hallucination.
+- Only include a keyFactor if you found a real, datable news source for it today.
 
-Cover these areas with specific, factual information — no speculation or hallucination. If you are not confident about a specific fact, say "data unavailable" rather than guessing:
-1. Production outlook — Guatemala (world's largest exporter ~70% share) and India (Kerala/Karnataka)
-2. Weather or crop conditions affecting supply
-3. Export demand from key buyers (Middle East, Europe, Southeast Asia)
-4. Recent price trend direction at Indian auction centres (Vandanmedu, Bodinayakanur)
-5. Any trade policy, currency, or geopolitical factor relevant to cardamom prices
+Search for ALL of the following right now:
+1. Latest cardamom auction prices at Vandanmedu, Bodinayakanur, or Kumily — last 7 days
+2. Cardamom news in Kerala — latest crop reports, rainfall, harvest updates from Idukki or Wayanad
+3. Guatemala cardamom production news — any recent export or crop updates
+4. India cardamom export news — Spices Board of India announcements, APEDA data
+5. Global cardamom demand news — Middle East, Europe, Saudi Arabia imports
+6. Any weather alerts affecting Kerala hill districts (Idukki, Munnar, Cardamom Hills)
+7. INR/USD exchange rate today — affects export competitiveness
+8. Any Indian government policy news affecting spice farmers — MSP, subsidies, export incentives
 
-Respond ONLY with a valid JSON object — no markdown, no explanation, no text outside the JSON:
+Respond ONLY with a valid JSON object — no markdown, no text before or after the JSON:
 {
-  "headline": "One sentence capturing the single most important market development right now",
+  "headline": "One sentence from actual news found today — if no news found write 'No major developments found today'",
   "outlook": "bullish" | "bearish" | "neutral" | "volatile",
-  "outlookReason": "One sentence explaining the outlook in plain language",
+  "outlookReason": "One sentence based only on news found — cite the source briefly e.g. (Spices Board, 22 Mar)",
   "keyFactors": [
     {
       "icon": "relevant emoji",
       "title": "Short factor title",
-      "detail": "2-3 sentences with specific facts. Write 'Data unavailable' if uncertain.",
-      "impact": "positive" | "negative" | "neutral"
+      "detail": "2-3 sentences from actual search results only. Include source name and date. If no data found write 'No recent news found for this topic.'",
+      "impact": "positive" | "negative" | "neutral",
+      "source": "Source name and date if available, else 'Not found'"
     }
   ],
-  "priceOutlook": "2-3 sentences on expected price direction for next 3-6 months with reasoning",
-  "farmerAdvice": "1-2 sentences of specific actionable advice for an Idukki cardamom farmer right now",
+  "keralaUpdate": "2-3 sentences on Kerala-specific cardamom news — local auction prices, rainfall, harvest conditions in Idukki/Wayanad from search results. Write 'No Kerala-specific news found today' if nothing found.",
+  "globalUpdate": "2-3 sentences on global market news — Guatemala, Middle East demand, exports. Write 'No global news found today' if nothing found.",
+  "priceOutlook": "Based only on news found today, 1-2 sentences on near-term price direction. If no price data found write 'Insufficient data for price outlook today'.",
+  "farmerAdvice": "1-2 sentences of practical advice based strictly on today's news findings. Do not give generic advice.",
   "fetchedDate": "${today}",
-  "confidence": "high" | "medium" | "low"
+  "dataQuality": "high" | "partial" | "low"
 }
 
-Provide exactly 4-5 keyFactors. Be factual and concise.`;
+Provide 4-6 keyFactors, but ONLY for topics where you found actual news. Do not pad with generic factors.`;
 
-    // Plain Gemini — no search grounding (grounding has 2 RPM limit on free tier)
-    const body=JSON.stringify({
+    // Use Google Search grounding — every fact must come from a live web source
+    // Try with grounding first, fall back without if key doesn't have it enabled
+    const makeBody=(withSearch)=>JSON.stringify({
       contents:[{parts:[{text:prompt}]}],
-      generationConfig:{temperature:0.1,maxOutputTokens:1500}
+      ...(withSearch?{tools:[{google_search:{}}]}:{}),
+      generationConfig:{temperature:0,maxOutputTokens:2000}
     });
 
     let res=await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
-      {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(30000)}
+      {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(true),signal:AbortSignal.timeout(40000)}
     );
-    // On 429 wait 5s and retry once
+    // On 429 wait 8s and retry once
     if(res.status===429){
-      await new Promise(r=>setTimeout(r,5000));
+      await new Promise(r=>setTimeout(r,8000));
       res=await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
-        {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(30000)}
+        {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(true),signal:AbortSignal.timeout(40000)}
       );
+    }
+    // If grounding not enabled for this key, fall back to plain (but note confidence will be lower)
+    if(!res.ok){
+      const errData=await res.json().catch(()=>({}));
+      const errMsg=(errData.error?.message||'').toLowerCase();
+      if(res.status===400&&(errMsg.includes('tool')||errMsg.includes('search')||errMsg.includes('grounding'))){
+        res=await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
+          {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(false),signal:AbortSignal.timeout(40000)}
+        );
+      }
     }
     if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Gemini API error '+res.status);}
     const json=await res.json();
@@ -944,7 +969,8 @@ function renderInsightsCard(d){
   const ol=OUTLOOK_STYLE[d.outlook]||OUTLOOK_STYLE.neutral;
   const age=d.ts?Math.round((Date.now()-d.ts)/3600000):0;
   const ageLabel=age<1?'Just now':age<24?age+'h ago':'Yesterday';
-  const conf=d.confidence||'medium';
+  const dq=d.dataQuality||d.confidence||'partial';
+  const dqLabel={'high':'🟢 Live data','partial':'🟡 Partial data','medium':'🟡 Partial data','low':'🔴 Limited data'}[dq]||'🟡 Partial data';
   const factors=(d.keyFactors||[]).map(f=>`
     <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)">
       <div style="font-size:20px;flex-shrink:0;line-height:1.4">${f.icon||'📌'}</div>
@@ -954,6 +980,7 @@ function renderInsightsCard(d){
           <span style="width:7px;height:7px;border-radius:50%;background:${IMPACT_DOT[f.impact]||IMPACT_DOT.neutral};flex-shrink:0;display:inline-block"></span>
         </div>
         <div style="font-size:12px;color:var(--tx2);line-height:1.5">${f.detail}</div>
+        ${f.source&&f.source!=='Not found'?`<div style="font-size:10px;color:var(--tx3);margin-top:3px">📎 ${f.source}</div>`:''}
       </div>
     </div>`).join('');
   el.innerHTML=`
@@ -961,15 +988,25 @@ function renderInsightsCard(d){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:${ol.color};background:${ol.border};padding:3px 10px;border-radius:10px">${ol.label}</span>
         <span style="font-size:11px;color:var(--tx3)">${ageLabel} · ${d.fetchedDate||''}</span>
-        <span style="font-size:10px;color:var(--tx3);margin-left:auto">${CONF_LABEL[conf]||''}</span>
+        <span style="font-size:10px;color:var(--tx3);margin-left:auto">${dqLabel}</span>
       </div>
       <div style="font-size:14px;font-weight:600;color:var(--tx);line-height:1.4">${d.headline||''}</div>
       <div style="font-size:12px;color:var(--tx2);margin-top:4px">${d.outlookReason||''}</div>
     </div>
+    ${d.keralaUpdate?`
+    <div style="background:var(--gbg);border:1px solid var(--gbr);border-radius:var(--rs);padding:11px 13px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--gm);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">🌿 Kerala update</div>
+      <div style="font-size:12px;color:var(--tx2);line-height:1.5">${d.keralaUpdate}</div>
+    </div>`:''}
+    ${d.globalUpdate?`
+    <div style="background:var(--bbg);border:1px solid var(--bbr);border-radius:var(--rs);padding:11px 13px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--bd);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">🌍 Global update</div>
+      <div style="font-size:12px;color:var(--tx2);line-height:1.5">${d.globalUpdate}</div>
+    </div>`:''}
     <div style="margin-bottom:12px">${factors}</div>
     ${d.priceOutlook?`
     <div style="background:var(--sur2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border:1px solid var(--bor)">
-      <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook · 3–6 months</div>
+      <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook</div>
       <div style="font-size:13px;color:var(--tx2);line-height:1.5">${d.priceOutlook}</div>
     </div>`:''}
     ${d.farmerAdvice?`
@@ -978,7 +1015,7 @@ function renderInsightsCard(d){
       <div style="font-size:13px;color:var(--tx);line-height:1.5">${d.farmerAdvice}</div>
     </div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-      <p style="font-size:10px;color:var(--tx3)">Gemini AI · Live web search · Refreshes daily at 5am IST</p>
+      <p style="font-size:10px;color:var(--tx3)">Sources: live web search · refreshes daily 5am IST</p>
       <button onclick="fetchAIInsights(true)" style="background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;font-family:inherit">↻ Refresh</button>
     </div>`;
 }
@@ -1091,7 +1128,8 @@ function insightsBodyHTML(){
     const ol=OUTLOOK_STYLE[cached.outlook]||OUTLOOK_STYLE.neutral;
     const age=cached.ts?Math.round((Date.now()-cached.ts)/3600000):0;
     const ageLabel=age<1?'Just now':age<24?age+'h ago':'Yesterday';
-    const conf=cached.confidence||'medium';
+    const dq=cached.dataQuality||cached.confidence||'partial';
+    const dqLabel={'high':'🟢 Live data','partial':'🟡 Partial data','medium':'🟡 Partial data','low':'🔴 Limited data'}[dq]||'🟡 Partial data';
     const factors=(cached.keyFactors||[]).map(f=>`
       <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--bor)">
         <div style="font-size:20px;flex-shrink:0;line-height:1.4">${f.icon||'📌'}</div>
@@ -1101,6 +1139,7 @@ function insightsBodyHTML(){
             <span style="width:7px;height:7px;border-radius:50%;background:${IMPACT_DOT[f.impact]||IMPACT_DOT.neutral};flex-shrink:0;display:inline-block"></span>
           </div>
           <div style="font-size:12px;color:var(--tx2);line-height:1.5">${f.detail}</div>
+          ${f.source&&f.source!=='Not found'?`<div style="font-size:10px;color:var(--tx3);margin-top:3px">📎 ${f.source}</div>`:''}
         </div>
       </div>`).join('');
     return `
@@ -1108,15 +1147,25 @@ function insightsBodyHTML(){
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${ol.color};background:${ol.border};padding:3px 10px;border-radius:10px">${ol.label}</span>
           <span style="font-size:11px;color:var(--tx3)">${ageLabel} · ${cached.fetchedDate||''}</span>
-          <span style="font-size:10px;color:var(--tx3);margin-left:auto">${CONF_LABEL[conf]||''}</span>
+          <span style="font-size:10px;color:var(--tx3);margin-left:auto">${dqLabel}</span>
         </div>
         <div style="font-size:14px;font-weight:600;color:var(--tx);line-height:1.4">${cached.headline||''}</div>
         <div style="font-size:12px;color:var(--tx2);margin-top:4px">${cached.outlookReason||''}</div>
       </div>
+      ${cached.keralaUpdate?`
+      <div style="background:var(--gbg);border:1px solid var(--gbr);border-radius:var(--rs);padding:11px 13px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--gm);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">🌿 Kerala update</div>
+        <div style="font-size:12px;color:var(--tx2);line-height:1.5">${cached.keralaUpdate}</div>
+      </div>`:''}
+      ${cached.globalUpdate?`
+      <div style="background:var(--bbg);border:1px solid var(--bbr);border-radius:var(--rs);padding:11px 13px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--bd);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">🌍 Global update</div>
+        <div style="font-size:12px;color:var(--tx2);line-height:1.5">${cached.globalUpdate}</div>
+      </div>`:''}
       <div style="margin-bottom:12px">${factors}</div>
       ${cached.priceOutlook?`
       <div style="background:var(--sur2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border:1px solid var(--bor)">
-        <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook · 3–6 months</div>
+        <div style="font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Price outlook</div>
         <div style="font-size:13px;color:var(--tx2);line-height:1.5">${cached.priceOutlook}</div>
       </div>`:''}
       ${cached.farmerAdvice?`
@@ -1125,7 +1174,7 @@ function insightsBodyHTML(){
         <div style="font-size:13px;color:var(--tx);line-height:1.5">${cached.farmerAdvice}</div>
       </div>`:''}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-        <p style="font-size:10px;color:var(--tx3)">Gemini AI · Live web search · Refreshes daily at 5am IST</p>
+        <p style="font-size:10px;color:var(--tx3)">Sources: live web search · refreshes daily 5am IST</p>
         <button onclick="fetchAIInsights(true)" style="background:none;border:1.5px solid var(--bor2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--tx3);cursor:pointer;font-family:inherit">↻ Refresh</button>
       </div>`;
   }
