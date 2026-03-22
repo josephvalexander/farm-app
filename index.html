@@ -365,18 +365,29 @@ window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{
 applyTheme();
 
 // ── CRYPTO ────────────────────────────────────────────────────────────────────
+// Normalise passphrase — strips invisible chars, smart quotes, leading/trailing space
+// Must be applied consistently everywhere passphrase is saved or used
+function normPP(pp){
+  if(!pp)return pp;
+  return pp
+    .replace(/[‘’]/g,"'")   // smart single quotes → straight
+    .replace(/[“”]/g,'"')   // smart double quotes → straight
+    .replace(/[ ​‌‍﻿]/g,'') // non-breaking & zero-width spaces
+    .trim();
+}
+
 async function getKey(pp,salt){
   const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pp),'PBKDF2',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 async function encrypt(data,pp){
-  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await getKey(pp,salt);
+  pp=normPP(pp);const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await getKey(pp,salt);
   const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(data)));
   const buf=new Uint8Array(28+ct.byteLength);buf.set(salt);buf.set(iv,16);buf.set(new Uint8Array(ct),28);
   return btoa(String.fromCharCode(...buf));
 }
 async function decrypt(b64,pp){
-  const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),key=await getKey(pp,raw.slice(0,16));
+  pp=normPP(pp);const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),key=await getKey(pp,raw.slice(0,16));
   const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(16,28)},key,raw.slice(28));
   return JSON.parse(new TextDecoder().decode(pt));
 }
@@ -530,8 +541,8 @@ async function triggerSync(manual=false){
   S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
   // Safety net: if sync never resolves, reset after 20s to prevent permanent stuck state
   const syncTimeout=setTimeout(()=>{
-    if(S.syncing){S.syncing=false;setSyncUI('err','Timed out');setTimeout(()=>setSyncUI('idle','Sync'),3000);}
-  },20000);
+    if(S.syncing){S.syncing=false;setSyncUI('err','Timed out — tap Sync to retry');setTimeout(()=>setSyncUI('idle','Sync'),4000);}
+  },35000);
   try{
     await getOAuthToken();
     const file=await findFile();
@@ -559,10 +570,20 @@ async function triggerSync(manual=false){
     // Load Gemini key and shared insights in background after sync
     syncGeminiKey();
     syncInsights();
-  }catch(e){console.error(e);setSyncUI('err','Failed — retry');}
+  }catch(e){
+    console.error('Sync error:',e);
+    const msg=e.message||'';
+    if(msg.toLowerCase().includes('passphrase')||msg.toLowerCase().includes('decrypt')){
+      setSyncUI('err','Wrong passphrase');
+    } else if(msg.toLowerCase().includes('network')||msg.toLowerCase().includes('fetch')){
+      setSyncUI('err','Network error — retry');
+    } else {
+      setSyncUI('err','Failed — retry');
+    }
+  }
   clearTimeout(syncTimeout);
   S.syncing=false;
-  setTimeout(()=>setSyncUI('idle','Sync'),3000);
+  setTimeout(()=>setSyncUI('idle','Sync'),4000);
 }
 
 function mergeDb(local,cloud){
@@ -1993,10 +2014,10 @@ function saveSharedFolderId(){
 function showPassphraseSetup(){
   modal(`
 <div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with family.</strong></p></div>
-<div class="fg"><label class="fl">Passphrase (min 6 characters)</label><input id="pp-in" type="password" autocomplete="new-password"/></div>
+<div class="fg"><label class="fl">Passphrase (min 6 characters)</label><div style="display:flex;gap:6px;align-items:center"><input id="pp-in" type="password" autocomplete="new-password" style="flex:1"/><button type="button" onclick="const i=document.getElementById('pp-in');i.type=i.type==='password'?'text':'password'" style="padding:6px 10px;font-size:11px;background:var(--sur2);border:1px solid var(--bor2);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--tx2)">Show</button></div></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePassphrase()">Save &amp; sync</button></div>`,'Encryption setup');
 }
-function savePassphrase(){const v=document.getElementById('pp-in').value.trim();if(!v||v.length<6){alert('Passphrase must be at least 6 characters');return;}cfg.passphrase=v;saveCfg();closeModal();triggerSync(true);}
+function savePassphrase(){const v=normPP(document.getElementById('pp-in').value);if(!v||v.length<6){alert('Passphrase must be at least 6 characters');return;}cfg.passphrase=v;saveCfg();closeModal();triggerSync(true);}
 
 function showClientIdSetup(){
   modal(`
