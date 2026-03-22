@@ -411,13 +411,27 @@ async function getKey(pp,salt){
   return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 async function encrypt(data,pp){
-  pp=normPP(pp);const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await getKey(pp,salt);
+  pp=normPP(pp);
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await getKey(pp,salt);
   const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(data)));
-  const buf=new Uint8Array(28+ct.byteLength);buf.set(salt);buf.set(iv,16);buf.set(new Uint8Array(ct),28);
-  return btoa(String.fromCharCode(...buf));
+  const buf=new Uint8Array(28+ct.byteLength);
+  buf.set(salt);buf.set(iv,16);buf.set(new Uint8Array(ct),28);
+  // Use chunked approach — btoa(String.fromCharCode(...buf)) stack-overflows on iOS for large arrays
+  let bin='';
+  const chunk=8192;
+  for(let i=0;i<buf.length;i+=chunk){
+    bin+=String.fromCharCode(...buf.subarray(i,i+chunk));
+  }
+  return btoa(bin);
 }
 async function decrypt(b64,pp){
-  pp=normPP(pp);const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)),key=await getKey(pp,raw.slice(0,16));
+  pp=normPP(pp);
+  // Robust base64 decode — handles whitespace/newlines Drive may add
+  const clean=b64.replace(/\s/g,'');
+  const raw=Uint8Array.from(atob(clean),c=>c.charCodeAt(0));
+  const key=await getKey(pp,raw.slice(0,16));
   const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(16,28)},key,raw.slice(28));
   return JSON.parse(new TextDecoder().decode(pt));
 }
