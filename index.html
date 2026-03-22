@@ -166,9 +166,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .price-fetched{font-size:10px;color:var(--gl);margin-top:2px;display:flex;align-items:center;gap:4px}
 .price-divider{width:1px;background:var(--gbr);align-self:stretch}
 .pbanner-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--gbr)}
-.fetch-btn{display:flex;align-items:center;gap:5px;background:var(--gm);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
-.fetch-btn svg{width:12px;height:12px}
-.fetch-btn.fetching svg{animation:spin 1s linear infinite}
 .manual-btn{font-size:11px;color:var(--tx3);background:none;border:1px solid var(--bor2);border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit}
 
 /* TABS */
@@ -307,7 +304,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
 let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
-let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,showAllYield:false,showAllExp:false,showAllInc:false,showAllDry:false,syncing:false,fetchingPrice:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
+let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,showAllYield:false,showAllExp:false,showAllInc:false,showAllDry:false,syncing:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
 
 // ── PERSIST ───────────────────────────────────────────────────────────────────
 function saveLocal(){
@@ -647,127 +644,6 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 
-// ── PRICE FETCHING ────────────────────────────────────────────────────────────
-// Note: Direct price scraping is blocked by CORS. We use a proxy approach via
-// Fetch live cardamom prices — tries Gemini AI (with web search) first,
-// falls back to allorigins proxy scraping, then prompts manual entry.
-async function fetchLivePrice(){
-  if(S.fetchingPrice)return;
-  S.fetchingPrice=true;
-  const btn=document.getElementById('fetch-btn');
-  if(btn){btn.classList.add('fetching');btn.querySelector('span').textContent='Fetching…';}
-  try{
-    const geminiKey=await loadGeminiKey();
-    if(geminiKey){
-      await fetchPriceViaGemini(geminiKey);
-    } else {
-      await fetchPriceViaScrape();
-    }
-  }catch(e){
-    console.warn('Price fetch failed:',e);
-    showToast('Auto-fetch failed — please update manually');
-  }
-  S.fetchingPrice=false;
-  const btn2=document.getElementById('fetch-btn');
-  if(btn2){btn2.classList.remove('fetching');btn2.querySelector('span').textContent='Fetch prices';}
-}
-
-async function fetchPriceViaGemini(key){
-  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const prompt=`Today is ${today}. Search for the latest cardamom auction prices in India.
-Find the most recent prices for:
-1. Small Cardamom (Green / Raw) at Vandanmedu or Bodinayakanur auction — price in ₹ per kg
-2. Dried Cardamom at Vandanmedu or Bodinayakanur auction — price in ₹ per kg
-
-Respond ONLY with this JSON, no markdown, no extra text:
-{"raw":NUMBER_OR_NULL,"dried":NUMBER_OR_NULL,"date":"DD Mon YYYY","source":"source name"}
-
-Use null if a price is not found. Numbers must be plain integers (e.g. 2150), no currency symbols.`;
-
-  const res=await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
-    {method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({
-       contents:[{parts:[{text:prompt}]}],
-       generationConfig:{temperature:0,maxOutputTokens:200}
-     }),
-     signal:AbortSignal.timeout(15000)
-    }
-  );
-  if(!res.ok)throw new Error('Gemini price fetch failed: '+res.status);
-  const json=await res.json();
-  const parts=json.candidates?.[0]?.content?.parts||[];
-  const text=parts.filter(p=>p.text).map(p=>p.text).join('');
-  if(!text)throw new Error('No response from Gemini');
-  const clean=text.replace(/```json|```/g,'').trim();
-  let data;
-  try{data=JSON.parse(clean);}catch(e){throw new Error('Could not parse price response');}
-  if(!data.raw&&!data.dried)throw new Error('Prices not found');
-  if(data.raw&&data.raw>500&&data.raw<50000)db.priceRaw=data.raw;
-  if(data.dried&&data.dried>500&&data.dried<50000)db.priceDried=data.dried;
-  db.priceDate=data.date||new Date().toLocaleDateString('en-IN');
-  db.priceSource=(data.source||'Gemini web search')+' (auto)';
-  saveLocal();triggerSync(false);render();
-  showToast('Prices updated via Gemini ✓');
-}
-
-async function fetchPriceViaScrape(){
-  // allorigins.win is dead — use corsproxy.io and cors.sh as alternatives
-  const TARGET='https://www.indianspices.com/marketing/price/domestic/daily-price.html';
-  const PROXIES=[
-    'https://corsproxy.io/?'+encodeURIComponent(TARGET),
-    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(TARGET),
-    'https://thingproxy.freeboard.io/fetch/'+TARGET,
-  ];
-  let html='';
-  for(const proxy of PROXIES){
-    try{
-      const r=await fetch(proxy,{signal:AbortSignal.timeout(8000)});
-      if(!r.ok)continue;
-      html=await r.text();
-      if(html.length>500)break; // got a real response
-    }catch(e){continue;}
-  }
-  if(!html){
-    showToast('Auto-fetch failed — set up Gemini key or update manually');
-    return;
-  }
-  // Parse the table — page has columns: Date | Auctioneer | Lots | TotalQty | QtySold | MaxPrice | AvgPrice
-  // We want MaxPrice and AvgPrice for Small Cardamom
-  let maxPrice=null, avgPrice=null, dateStr=null;
-  // Extract after "SMALL CARDAMOM" section
-  const smallSection=html.split(/SMALL CARDAMOM/i)[1]||html;
-  // Find <td> values — strip tags and get numbers
-  const tds=[...smallSection.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
-    .map(m=>m[1].replace(/<[^>]+>/g,'').trim())
-    .filter(Boolean);
-  // Find the date (e.g. "14-Mar-2026")
-  for(const td of tds){
-    if(/\d{1,2}-[A-Za-z]{3}-\d{4}/.test(td)){dateStr=td;break;}
-    if(/\d{1,2}\/\d{1,2}\/\d{4}/.test(td)){dateStr=td;break;}
-  }
-  // Find MaxPrice and AvgPrice — they appear as 4-digit numbers in consecutive tds
-  for(let i=0;i<tds.length-1;i++){
-    const v1=parseFloat(tds[i].replace(/,/g,''));
-    const v2=parseFloat(tds[i+1].replace(/,/g,''));
-    if(v1>500&&v1<50000&&v2>500&&v2<50000&&Math.abs(v1-v2)/Math.max(v1,v2)<0.6){
-      maxPrice=Math.round(v1);
-      avgPrice=Math.round(v2);
-      break;
-    }
-  }
-  if(maxPrice||avgPrice){
-    // Show both max and avg — store avg as the "dried" price, max as reference
-    db.priceDried=avgPrice||maxPrice;
-    db.priceRaw=null; // scrape doesn't distinguish raw vs dried
-    db.priceDate=dateStr||new Date().toLocaleDateString('en-IN');
-    db.priceSource='Spices Board · Avg ₹'+(avgPrice||'—')+' Max ₹'+(maxPrice||'—');
-    saveLocal();triggerSync(false);render();
-    showToast('Prices updated from Spices Board ✓');
-  } else {
-    showToast('Could not parse prices — please update manually');
-  }
-}
 
 function showToast(msg){
   let t=document.getElementById('toast');
@@ -1151,13 +1027,7 @@ function renderDashboard(){
   ${hasPrice?`<div class="price-source">${db.priceSource||''} · ${db.priceDate||''}</div>`:''}
   <div class="pbanner-footer">
     <span style="font-size:11px;color:var(--tx3)">Vandanmedu / Kumily · ~25-30km</span>
-    <div style="display:flex;gap:6px">
-      <button class="manual-btn" onclick="showEditPrice()">Manual</button>
-      <button class="fetch-btn" id="fetch-btn" onclick="fetchLivePrice()">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
-        <span>Fetch prices</span>
-      </button>
-    </div>
+    <button class="manual-btn" onclick="showEditPrice()">Update prices</button>
   </div>
 </div>
 
@@ -1979,7 +1849,7 @@ function showEditPrice(){
 <div class="fg"><label class="fl">Raw / Green cardamom price (₹/kg)</label><input id="f-mr" type="number" value="${db.priceRaw||''}" placeholder="e.g. 1800"/></div>
 <div class="fg"><label class="fl">Dried cardamom price (₹/kg)</label><input id="f-md" type="number" value="${db.priceDried||''}" placeholder="e.g. 2500"/></div>
 <div class="fg"><label class="fl">Source / date</label><input id="f-ms" type="text" value="${esc(db.priceSource||'')}" placeholder="Vandanmedu auction, 13 Mar"/></div>
-<p style="font-size:11px;color:var(--tx3);margin-top:4px">Or use the Fetch button on dashboard to auto-fetch from Spices Board.</p>
+<p style="font-size:11px;color:var(--tx3);margin-top:4px">Prices sync to all family members automatically.</p>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePrice()">Update</button></div>`,'Update market prices');
 }
 function savePrice(){
