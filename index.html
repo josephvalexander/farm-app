@@ -376,6 +376,36 @@ function normPP(pp){
     .trim();
 }
 
+// Generate all plausible variants of a passphrase to handle iOS autocorrect
+function ppVariants(pp){
+  if(!pp)return[];
+  const n=normPP(pp);
+  const variants=new Set([
+    pp,
+    n,
+    pp.trim(),
+    n.charAt(0).toUpperCase()+n.slice(1),
+    n.charAt(0).toLowerCase()+n.slice(1),
+    pp.charAt(0).toUpperCase()+pp.trim().slice(1),
+    pp.charAt(0).toLowerCase()+pp.trim().slice(1),
+  ]);
+  return [...variants].filter(Boolean);
+}
+
+// Try to decrypt with multiple passphrase variants — handles iOS autocorrect mismatches
+async function decryptWithVariants(b64,pp){
+  const variants=ppVariants(pp);
+  for(const v of variants){
+    try{
+      const result=await decrypt(b64,v);
+      if(v!==pp){cfg.passphrase=v;saveCfg();}
+      return result;
+    }catch(e){continue;}
+  }
+  throw new Error('Wrong passphrase');
+}
+
+
 async function getKey(pp,salt){
   const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pp),'PBKDF2',false,['deriveKey']);
   return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
@@ -556,8 +586,8 @@ async function triggerSync(manual=false){
     } else {
       const raw=await readFile(file.id);
       let cloud;
-      try{cloud=await decrypt(raw,cfg.passphrase);}
-      catch(e){setSyncUI('err','Wrong passphrase');S.syncing=false;return;}
+      try{cloud=await decryptWithVariants(raw,cfg.passphrase);}
+      catch(e){setSyncUI('err','Wrong passphrase');clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),4000);return;}
       // Rotate backups before overwriting (fire and forget)
       rotateBackups(raw);
       db=mergeDb(db,cloud);saveLocal();
@@ -728,7 +758,7 @@ async function loadGeminiKey(){
     const f=await findNamedFile(KEYS_DRIVE_FILE);
     if(!f)return null;
     const raw=await readFile(f.id);
-    const data=await decrypt(raw,cfg.passphrase);
+    const data=await decryptWithVariants(raw,cfg.passphrase);
     S.geminiKey=data.geminiKey||null;
     return S.geminiKey;
   }catch(e){return null;}
@@ -2115,7 +2145,10 @@ function renderSettings(){
     <button onclick="showSharedFolderSetup()" class="ia e">${cfg.sharedFolderId?'Change':'Set up'}</button>
   </div>
   <div class="row">
-    <div><div class="rt">Passphrase</div><div class="rs">${cfg.passphrase?'Set ✓':'Not set'}</div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div><div class="rt">Passphrase</div><div class="rs" id="pp-display">${cfg.passphrase?'Set ✓ (tap to reveal)':'Not set'}</div></div>
+      ${cfg.passphrase?`<button onclick="const el=document.getElementById('pp-display');el.textContent=el.textContent.startsWith('Set')?'${cfg.passphrase.replace(/'/g,"\\'")}':'Set ✓ (tap to reveal)'" style="font-size:11px;color:var(--bd);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Reveal</button>`:''}
+    </div>
     <button onclick="showChangePassphrase()" class="ia e">Change</button>
   </div>
   <div class="row">
