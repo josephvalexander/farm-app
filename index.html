@@ -287,7 +287,7 @@ input:focus,select:focus{outline:none;border-color:var(--gm);box-shadow:0 0 0 3p
     Settings<div class="nb-dot"></div>
   </button>
 </div>
-<div id="modal-root"></div>
+<div id="modal-root" style="pointer-events:none"></div>
 
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
@@ -871,7 +871,14 @@ async function syncInsights(){
 
 // ── GEMINI FETCH (with Google Search grounding) ─────────────────────────────
 async function fetchAIInsights(force=false){
-  if(S.fetchingInsights)return;
+  // Safety: if stuck fetching for >45s (e.g. previous call crashed), reset and allow retry
+  if(S.fetchingInsights){
+    if(!S._insightsFetchStart||Date.now()-S._insightsFetchStart>45000){
+      S.fetchingInsights=false;S._insightsFetchStart=null;
+    } else {
+      return;
+    }
+  }
   // Hard rate limit: never fire more than once per 60 seconds regardless of other guards
   const now=Date.now();
   if(!force&&now-S.lastInsightsTrigger<60000)return;
@@ -881,7 +888,7 @@ async function fetchAIInsights(force=false){
   if(cached&&!force){if(S.tab==='dashboard')render();return;}
   const key=await loadGeminiKey();
   if(!key){renderInsightsSetup();return;}
-  S.fetchingInsights=true;
+  S.fetchingInsights=true;S._insightsFetchStart=Date.now();
   renderInsightsLoading();
   try{
     const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
@@ -990,7 +997,7 @@ Provide 4-6 keyFactors, but ONLY for topics where you found actual news from the
     S._insightsError=e.message&&e.message.length<80?e.message:'Could not load insights. Check your API key or connection.';
     showToast('Insights unavailable — tap Retry');
   }
-  S.fetchingInsights=false;
+  S.fetchingInsights=false;S._insightsFetchStart=null;
   if(S.tab==='dashboard')render(); // re-render to show result or error via insightsBodyHTML
 }
 
@@ -1887,7 +1894,8 @@ ${db.expenses.length===0?`
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
 function modal(body,title){
-  document.getElementById('modal-root').innerHTML=`
+  const r=document.getElementById('modal-root');r.style.pointerEvents='';
+  r.innerHTML=`
     <div class="mo" onclick="if(event.target===this)closeModal()">
       <div class="md">
         <div class="mh"></div>
@@ -1896,7 +1904,7 @@ function modal(body,title){
       </div>
     </div>`;
 }
-function closeModal(){document.getElementById('modal-root').innerHTML='';}
+function closeModal(){const r=document.getElementById('modal-root');r.innerHTML='';r.style.pointerEvents='none';}
 
 function confirmDel(type,id,label){
   modal(`<div class="cbox"><p>Delete <strong>${label}</strong>?<br>This cannot be undone.</p></div>
