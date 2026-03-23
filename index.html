@@ -324,7 +324,7 @@ function loadLocal(){
     if(c)cfg={...cfg,...JSON.parse(c)};
     // migrate old config key
     const oldCfg=localStorage.getItem('cf_config_v2');
-    if(oldCfg&&!cfg.passphrase){const o=JSON.parse(oldCfg);cfg={...cfg,...o};saveCfg();}
+    if(oldCfg&&!cfg.passphrase){const o=JSON.parse(oldCfg);cfg={...cfg,...o};if(cfg.passphrase)cfg.passphrase=normPP(cfg.passphrase);saveCfg();}
     // migrate old db key
     const oldDb=localStorage.getItem('cf_data_v3');
     if(oldDb&&!db.sections.length){
@@ -392,13 +392,15 @@ function ppVariants(pp){
   return [...variants].filter(Boolean);
 }
 
-// Try to decrypt with multiple passphrase variants — handles iOS autocorrect mismatches
+// Try to decrypt with multiple passphrase variants — handles autocorrect mismatches
+// IMPORTANT: never mutates cfg.passphrase — that caused cascading encryption drift
 async function decryptWithVariants(b64,pp){
   const variants=ppVariants(pp);
   for(const v of variants){
     try{
       const result=await decrypt(b64,v);
-      if(v!==pp){cfg.passphrase=v;saveCfg();}
+      // Log which variant worked so user can correct their stored passphrase manually
+      if(v!==pp)console.log('[Auth] Variant matched:',JSON.stringify(v),'stored:',JSON.stringify(pp));
       return result;
     }catch(e){continue;}
   }
@@ -439,11 +441,11 @@ async function decrypt(b64,pp){
 // ── GOOGLE DRIVE ──────────────────────────────────────────────────────────────
 function getClientId(){return cfg.clientId||CID_PH;}
 
-// ── OAUTH TOKEN — persisted in sessionStorage for up to 55 mins ──────────────
+// ── OAUTH TOKEN — persisted in sessionStorage for up to 30 mins ──────────────
 // sessionStorage survives page refreshes within the same tab session.
-// Token is valid for 1hr; we cache for 55min to avoid using an expiring token.
+// Token is valid for 1hr; we cache for 30min to be conservative.
 const TOKEN_SS_KEY='vp_oauth_token';
-const TOKEN_TTL=55*60*1000; // 55 minutes
+const TOKEN_TTL=30*60*1000; // 30 minutes
 
 function loadCachedToken(){
   try{
@@ -591,7 +593,8 @@ async function triggerSync(manual=false){
     await getOAuthToken();
     const file=await findFile();
     if(!file){
-      const enc=await encrypt(db,cfg.passphrase);
+      const pp=normPP(cfg.passphrase);
+      const enc=await encrypt(db,pp);
       const res=await writeFile(null,enc);
       cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
       setSyncUI('ok','Synced ✓');
@@ -600,12 +603,35 @@ async function triggerSync(manual=false){
     } else {
       const raw=await readFile(file.id);
       let cloud;
-      try{cloud=await decryptWithVariants(raw,cfg.passphrase);}
-      catch(e){setSyncUI('err','Wrong passphrase');clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),4000);return;}
+      try{
+        // Diagnostic: log file stats to help debug decrypt failures
+        console.log('[Sync] Drive file length:',raw.length,'chars, first 20:',raw.slice(0,20));
+        const isValidB64=/^[A-Za-z0-9+/=\s]+$/.test(raw.trim());
+        console.log('[Sync] Looks like valid base64:',isValidB64);
+        console.log('[Sync] Passphrase length:',cfg.passphrase?.length,'repr:',JSON.stringify(cfg.passphrase));
+        cloud=await decryptWithVariants(raw,normPP(cfg.passphrase));
+      }catch(e){
+        console.error('[Sync] Decrypt failed:',e.message);
+        // Check if the file content looks like JSON (not encrypted) — old unencrypted data
+        const trimmed=raw.trim();
+        if(trimmed.startsWith('{')||trimmed.startsWith('[')){
+          console.log('[Sync] File appears to be unencrypted JSON — loading directly');
+          try{
+            cloud=JSON.parse(trimmed);
+            showToast('Migrated unencrypted data — re-encrypting now');
+          }catch(e2){
+            setSyncUI('err','Corrupt file — use Reset Drive in Settings');
+            clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),5000);return;
+          }
+        } else {
+          setSyncUI('err','Wrong passphrase — check Settings');
+          clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),5000);return;
+        }
+      }
       // Rotate backups before overwriting (fire and forget)
       rotateBackups(raw);
       db=mergeDb(db,cloud);saveLocal();
-      const enc=await encrypt(db,cfg.passphrase);
+      const enc=await encrypt(db,normPP(cfg.passphrase));
       await writeFile(file.id,enc);
       cfg.lastSyncTs=Date.now();saveCfg();
       setSyncUI('ok','Synced ✓');
