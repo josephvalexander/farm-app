@@ -10,7 +10,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
-let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],
+let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
 let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,showAllYield:false,showAllExp:false,showAllInc:false,showAllDry:false,syncing:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
 
@@ -454,6 +454,7 @@ function mergeDb(local,cloud){
     expenses:ml(local.expenses,cloud.expenses),
     incomes:ml(local.incomes,cloud.incomes),
     dryings:ml(local.dryings||[],cloud.dryings||[]),
+    buyers:[...new Set([...(local.buyers||[]),...(cloud.buyers||[])])],
     priceRaw:newer?cloud.priceRaw:local.priceRaw,
     priceDried:newer?cloud.priceDried:local.priceDried,
     priceDate:newer?cloud.priceDate:local.priceDate,
@@ -537,6 +538,12 @@ const secName=id=>{const s=db.sections.find(x=>x.id===id);return s?s.name:'All s
 const seaName=id=>{if(!id)return'';const s=(db.seasons||[]).find(x=>x.id===id);return s?s.name:'';};
 const secOpts=(blank='All sections')=>`<option value="">${blank}</option>`+db.sections.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
 const seaOpts=(blank='No season')=>`<option value="">${blank}</option>`+(db.seasons||[]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+
+// Buyers list helpers
+const buyerOpts=(selected='')=>{
+  const def=`<option value="">Select buyer…</option>`;
+  return def+(db.buyers||[]).map(b=>`<option value="${esc(b)}" ${b===selected?'selected':''}>${esc(b)}</option>`).join('')+`<option value="__new__">+ Add new buyer…</option>`;
+};
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,"&#39;").replace(/"/g,'&quot;');
 
 // ── DELETE WITH TRACKING ──────────────────────────────────────────────────────
@@ -1329,7 +1336,7 @@ function renderYield(){
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${secName(y.sectionId)}</div>
-      <div class="rs">${y.date}</div>
+      <div class="rs">${y.date}${y.labourers?' · '+y.labourers+' labourers':''}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
       <div style="color:var(--brand-lite);font-weight:700;font-size:15px">${y.qty} kg</div>
@@ -1585,7 +1592,7 @@ function renderForecast(){
 
   // ── 8-MONTH ROWS ──
   const isPeakMo=mo=>[6,7,8,9].includes(mo); // Jul–Oct (0-indexed)
-  const rows=Array.from({length:8},(_,i)=>{
+  const rows=Array.from({length:5},(_,i)=>{
     const d=new Date(thisYear,thisMonth+i+1,1);
     const mo=d.getMonth();
     const isPeak=isPeakMo(mo);
@@ -1627,18 +1634,7 @@ function renderForecast(){
 </div>
 
 <div class="card">
-  <div class="ct">Projected yield — next 8 months</div>
-  ${rows.map(r=>`
-  <div class="br-row">
-    <div class="br-lbl" style="font-size:11px;font-weight:${r.isPeak?700:400}">${r.label}${r.isPeak?'<span class="pk" style="margin-left:3px">Peak</span>':''}</div>
-    <div class="br-trk"><div class="br-fill" style="width:${Math.round(r.projYield/maxYield*100)}%;${r.hasActual?'background:linear-gradient(90deg,var(--b-tx),var(--b-bor))':''}"></div></div>
-    <div class="br-val">${r.projYield} kg${r.hasActual?' ✓':''}</div>
-  </div>`).join('')}
-  <p style="font-size:10px;color:var(--tx3);margin-top:8px">✓ = based on your actual recorded data for that month</p>
-</div>
-
-<div class="card">
-  <div class="ct">Projected expenses — next 8 months</div>
+  <div class="ct">Projected expenses — next 5 months</div>
   ${rows.map(r=>`
   <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
@@ -1710,15 +1706,18 @@ function saveSection(id){
 function showEditYield(id){
   const y=id?db.yields.find(x=>x.id===id):null;
   modal(`
-<div class="fg"><label class="fl">Date</label><input id="f-yd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-yd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
-<div class="fg"><label class="fl">Yield (kg)</label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
+<div class="fg"><label class="fl">Yield (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
+<div class="fg"><label class="fl">Labourers picking</label><input id="f-yl" type="number" value="${y?.labourers||''}" placeholder="e.g. 5" min="0"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveYield('${id||''}')">Save</button></div>`,y?'Edit yield':'Add yield');
   if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;}
 }
 function saveYield(id){
-  const qty=parseFloat(document.getElementById('f-yq').value);if(!qty)return;
-  const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,updatedAt:Date.now()};
+  const qtyEl=document.getElementById('f-yq');
+  const qty=parseFloat(qtyEl.value);
+  if(!qty){qtyEl.style.borderColor='var(--r-tx)';qtyEl.focus();return;}
+  const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,labourers:parseInt(document.getElementById('f-yl').value)||null,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
@@ -1728,18 +1727,21 @@ function saveYield(id){
 function showEditExpense(id){
   const e=id?db.expenses.find(x=>x.id===id):null;
   modal(`
-<div class="fg"><label class="fl">Date</label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
-<div class="fg"><label class="fl">Category</label>
+<div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-edt" type="date" value="${e?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Category <span style="color:var(--r-tx)">*</span></label>
 <select id="f-ec"><option value="labor" ${e?.category==='labor'?'selected':''}>Labor</option><option value="pesticide" ${e?.category==='pesticide'?'selected':''}>Pesticide</option><option value="rawmat" ${e?.category==='rawmat'?'selected':''}>Raw material</option><option value="crop" ${e?.category==='crop'?'selected':''}>Crop</option><option value="other" ${e?.category==='other'?'selected':''}>Other</option></select>
 </div>
-<div class="fg"><label class="fl">Description</label><input id="f-ed" type="text" value="${esc(e?.desc||'')}" placeholder="e.g. Weeding labor"/></div>
-<div class="fg"><label class="fl">Amount (₹)</label><input id="f-ea" type="number" value="${e?.amount||''}" placeholder="5000"/></div>
+<div class="fg"><label class="fl">Description <span style="color:var(--r-tx)">*</span></label><input id="f-ed" type="text" value="${esc(e?.desc||'')}" placeholder="e.g. Weeding labor"/></div>
+<div class="fg"><label class="fl">Amount (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-ea" type="number" value="${e?.amount||''}" placeholder="5000"/></div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-es">${secOpts()}</select></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveExpense('${id||''}')">Save</button></div>`,e?'Edit expense':'Add expense');
   if(e){const s=document.getElementById('f-es');if(s&&e.sectionId)s.value=e.sectionId;}
 }
 function saveExpense(id){
-  const amount=parseFloat(document.getElementById('f-ea').value),desc=document.getElementById('f-ed').value.trim();if(!amount||!desc)return;
+  const descEl=document.getElementById('f-ed'),amtEl=document.getElementById('f-ea');
+  const desc=descEl.value.trim(),amount=parseFloat(amtEl.value);
+  if(!desc){descEl.style.borderColor='var(--r-tx)';descEl.focus();return;}
+  if(!amount){amtEl.style.borderColor='var(--r-tx)';amtEl.focus();return;}
   const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,updatedAt:Date.now()};
   if(id){const i=db.expenses.findIndex(x=>x.id===id);if(i>=0)db.expenses[i]={...db.expenses[i],...data};}
   else db.expenses.push({id:uid(),createdAt:Date.now(),...data});
@@ -1750,20 +1752,28 @@ function saveExpense(id){
 function showEditIncome(id){
   const i=id?db.incomes.find(x=>x.id===id):null;
   modal(`
-<div class="fg"><label class="fl">Date</label><input id="f-id" type="date" value="${i?.date||new Date().toISOString().slice(0,10)}"/></div>
-<div class="fg"><label class="fl">Quantity sold (kg)</label><input id="f-iq" type="number" value="${i?.qty||''}" placeholder="100"/></div>
-<div class="fg"><label class="fl">Price per kg (₹)</label><input id="f-ip" type="number" value="${i?.pricePerKg||''}" placeholder="Enter price"/></div>
+<div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-id" type="date" value="${i?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Quantity sold (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-iq" type="number" value="${i?.qty||''}" placeholder="100"/></div>
+<div class="fg"><label class="fl">Price per kg (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-ip" type="number" value="${i?.pricePerKg||''}" placeholder="Enter price"/></div>
 <div class="fg"><label class="fl">Type</label>
 <select id="f-ity"><option value="raw" ${(i?.type||'raw')==='raw'?'selected':''}>Raw / green cardamom</option><option value="dried" ${i?.type==='dried'?'selected':''}>Dried cardamom</option></select>
 </div>
-<div class="fg"><label class="fl">Buyer / market</label><input id="f-ib" type="text" value="${esc(i?.buyer||'')}" placeholder="Vandanmedu auction"/></div>
+<div class="fg"><label class="fl">Buyer / market <span style="color:var(--r-tx)">*</span></label>
+  <select id="f-ib" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();triggerSync(false);this.outerHTML='<select id=\'f-ib\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
+    ${buyerOpts(i?.buyer||'')}
+  </select>
+</div>
 <div class="fg"><label class="fl">Section (optional)</label><select id="f-is">${secOpts()}</select></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-ino" type="text" value="${esc(i?.notes||'')}" placeholder="Grade, batch…"/></div>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveIncome('${id||''}')">Save</button></div>`,i?'Edit income':'Add income / sale');
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveIncome('${id||''}')">Save</button></div>`,i?'Edit sale':'Add sale / income');
   if(i){const s=document.getElementById('f-is');if(s&&i.sectionId)s.value=i.sectionId;}
 }
 function saveIncome(id){
-  const qty=parseFloat(document.getElementById('f-iq').value),pricePerKg=parseFloat(document.getElementById('f-ip').value);if(!qty||!pricePerKg)return;
+  const qtyEl=document.getElementById('f-iq'),priceEl=document.getElementById('f-ip'),buyerEl=document.getElementById('f-ib');
+  const qty=parseFloat(qtyEl.value),pricePerKg=parseFloat(priceEl.value);
+  if(!qty){qtyEl.style.borderColor='var(--r-tx)';qtyEl.focus();return;}
+  if(!pricePerKg){priceEl.style.borderColor='var(--r-tx)';priceEl.focus();return;}
+  if(buyerEl&&!buyerEl.value){buyerEl.style.borderColor='var(--r-tx)';buyerEl.focus();return;}
   const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.incomes.findIndex(x=>x.id===id);if(i>=0)db.incomes[i]={...db.incomes[i],...data};}
   else db.incomes.push({id:uid(),createdAt:Date.now(),...data});
@@ -1931,6 +1941,20 @@ function renderSettings(){
       <button onclick="manualBackup()" class="ia e">Snapshot</button>
       <button onclick="showBackups()" class="ia e">Restore</button>
     </div>
+  </div>
+</div>
+
+<div class="settings-group">
+  <div class="settings-group-title">Buyers list</div>
+  <div style="padding:12px 16px">
+    <p style="font-size:12px;color:var(--tx3);margin-bottom:10px">Buyers appear as a dropdown when adding a sale. Shared across all devices via Drive.</p>
+    ${(db.buyers||[]).length===0?'<p style="font-size:13px;color:var(--tx3);margin-bottom:10px">No buyers added yet.</p>':''}
+    ${(db.buyers||[]).map((b,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bor)">
+      <span style="font-size:13px;color:var(--tx)">${esc(b)}</span>
+      <button onclick="db.buyers.splice(${i},1);saveLocal();triggerSync(false);render()" style="font-size:11px;color:var(--r-tx);background:var(--r-bg);border:1px solid var(--r-bor);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Remove</button>
+    </div>`).join('')}
+    <button onclick="const n=prompt('Buyer name:');if(n&&n.trim()&&!db.buyers.includes(n.trim())){db.buyers.push(n.trim());saveLocal();triggerSync(false);render();}" style="width:100%;margin-top:10px;padding:10px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">+ Add buyer</button>
   </div>
 </div>
 
@@ -2203,7 +2227,7 @@ function confirmClearLocal(){
 }
 function doClearLocal(){
   localStorage.removeItem(DB_KEY);
-  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
   closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
 }
 
