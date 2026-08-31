@@ -4,7 +4,7 @@ const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
 const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.file';
 const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
 const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
-const AUTO_SYNC_INTERVAL=5*60*1000;
+const AUTO_SYNC_INTERVAL=15*60*1000; // 15min — reduces Drive write race window
 const NEWS_KEY='vp_news_v1';
 const NEWS_TTL=24*60*60*1000; // 24 hours
 
@@ -343,16 +343,35 @@ async function triggerSync(manual=false){
   },35000);
   try{
     await getOAuthToken();
-    const file=await findFile();
+    // Try cached file ID first (avoids search + prevents duplicate creation race)
+    let file=null;
+    if(cfg.driveFileId){
+      // Verify cached ID still exists
+      try{
+        const check=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id`);
+        if(check.ok)file={id:cfg.driveFileId};
+        else cfg.driveFileId=null; // stale — clear it
+      }catch(e){cfg.driveFileId=null;}
+    }
+    if(!file)file=await findFile();
     if(!file){
       const pp=normPP(cfg.passphrase);
       const enc=await encrypt(db,pp);
-      const res=await writeFile(null,enc);
-      cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
-      setSyncUI('ok','Synced ✓');
-      syncGeminiKey();
-      syncInsights();
-    } else {
+      // Double-check one more time before creating — prevents race between devices
+      const recheck=await findFile();
+      if(recheck){
+        file=recheck;
+        cfg.driveFileId=file.id;saveCfg();
+      } else {
+        const res=await writeFile(null,enc);
+        cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
+        setSyncUI('ok','Synced ✓');
+        syncGeminiKey();
+        syncInsights();
+      }
+    }
+    if(file&&!cfg.driveFileId){cfg.driveFileId=file.id;saveCfg();}
+    if(file){
       const raw=await readFile(file.id);
       let cloud;
       try{
