@@ -10,7 +10,7 @@ const NEWS_TTL=24*60*60*1000; // 24 hours
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let cfg={driveFileId:null,sharedFolderId:null,passphrase:null,lastSyncTs:null,clientId:null,googleAccountHint:null,deviceId:'dev_'+Math.random().toString(36).slice(2,8)};
-let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],
+let db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],priceHistory:[],
   priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
 let S={tab:'dashboard',recTab:'yield',expTab:'all',yieldPeriod:'month',expPeriod:'month',incPeriod:'month',dryPeriod:'month',insightsOpen:true,showAllYield:false,showAllExp:false,showAllInc:false,showAllDry:false,syncing:false,fetchingInsights:false,lastInsightsTrigger:0,oauthToken:null,geminiKey:null,_insightsError:null,pendingSync:false};
 
@@ -455,6 +455,12 @@ function mergeDb(local,cloud){
     incomes:ml(local.incomes,cloud.incomes),
     dryings:ml(local.dryings||[],cloud.dryings||[]),
     buyers:[...new Set([...(local.buyers||[]),...(cloud.buyers||[])])],
+    priceHistory:(()=>{
+      // Merge by date, keep most recent entry per date
+      const all=[...(local.priceHistory||[]),...(cloud.priceHistory||[])];
+      const byDate={};all.forEach(p=>{if(!byDate[p.date]||p.fetchedAt>byDate[p.date].fetchedAt)byDate[p.date]=p;});
+      return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-60); // keep last 60 days
+    })(),
     priceRaw:newer?cloud.priceRaw:local.priceRaw,
     priceDried:newer?cloud.priceDried:local.priceDried,
     priceDate:newer?cloud.priceDate:local.priceDate,
@@ -787,7 +793,122 @@ Provide 4-6 keyFactors, but ONLY for topics where you found actual news from the
   if(S.tab==='dashboard')render(); // re-render to show result or error via insightsBodyHTML
 }
 
+// ── CARDAMOM PRICE AUTO-FETCH (cardamom.farm) ─────────────────────────────────
+const PRICE_FETCH_KEY='vp_price_fetch_ts';
+const PRICE_FETCH_TTL=12*60*60*1000; // fetch at most every 12h
+
+async function fetchCardamomPrice(){
+  // Rate-limit: don't fetch more than once per 12h
+  const last=parseInt(localStorage.getItem(PRICE_FETCH_KEY)||'0');
+  if(Date.now()-last<PRICE_FETCH_TTL)return;
+
+  const PROXIES=[
+    'https://corsproxy.io/?'+encodeURIComponent('https://cardamom.farm/history'),
+    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent('https://cardamom.farm/history'),
+  ];
+
+  let html='';
+  for(const proxy of PROXIES){
+    try{
+      const r=await fetch(proxy,{signal:AbortSignal.timeout(10000)});
+      if(!r.ok)continue;
+      const t=await r.text();
+      if(t.length>500){html=t;break;}
+    }catch(e){continue;}
+  }
+  if(!html)return;
+
+  // Parse auction records from the history page
+  // Pattern: date like "29 Aug 2026", avg price like "₹3,060", max price like "₹4,159"
+  const records=[];
+  // Split by auction blocks — each has a date and two price mentions
+  const dateRe=/\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b/g;
+  const priceRe=/₹([\d,]+)/g;
+
+  // Find all dates in document
+  const allDates=[...html.matchAll(dateRe)];
+  const allPrices=[...html.matchAll(priceRe)].map(m=>parseInt(m[1].replace(/,/g,''))).filter(p=>p>500&&p<200000);
+
+  // Group prices by date — each auction has avg and max price
+  // Strategy: find date positions, then grab prices between consecutive date positions
+  const monthMap={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+  const datePositions=allDates.map(m=>({
+    idx:m.index,
+    dateStr:`${m[3]}-${String(monthMap[m[2]]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` // YYYY-MM-DD
+  }));
+
+  // Walk through price occurrences and tag by nearest preceding date
+  const pricePositions=[...html.matchAll(/₹([\d,]+)/g)].map(m=>({idx:m.index,val:parseInt(m[1].replace(/,/g,''))})).filter(p=>p.val>500&&p.val<200000);
+
+  const byDate={};
+  pricePositions.forEach(p=>{
+    // Find the closest preceding date
+    let best=null;
+    for(const d of datePositions){
+      if(d.idx<p.idx)best=d;
+      else break;
+    }
+    if(!best)return;
+    if(!byDate[best.dateStr])byDate[best.dateStr]=[];
+    byDate[best.dateStr].push(p.val);
+  });
+
+  // For each date: avg of all avg prices (lower values), max of all max prices
+  const today=new Date().toISOString().slice(0,10);
+  let latestDate=null,latestAvg=null,latestMax=null;
+
+  Object.entries(byDate).forEach(([date,prices])=>{
+    if(prices.length<1)return;
+    // Sort prices: in each auction block, lower price = avg, higher = max
+    // We expect pairs; take median of lower half as avg
+    prices.sort((a,b)=>a-b);
+    const mid=Math.floor(prices.length/2);
+    const avgPrices=prices.slice(0,Math.max(1,mid));
+    const maxPrices=prices.slice(mid);
+    const avgPrice=Math.round(avgPrices.reduce((s,v)=>s+v,0)/avgPrices.length);
+    const maxPrice=Math.max(...maxPrices);
+
+    if(avgPrice>500&&avgPrice<100000){
+      // Add to history
+      const existing=db.priceHistory.findIndex(p=>p.date===date);
+      const entry={date,avg:avgPrice,max:maxPrice,fetchedAt:Date.now()};
+      if(existing>=0)db.priceHistory[existing]=entry;
+      else db.priceHistory.push(entry);
+
+      if(!latestDate||date>latestDate){latestDate=date;latestAvg=avgPrice;latestMax=maxPrice;}
+    }
+  });
+
+  // Keep last 60 days
+  db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
+  if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
+
+  // Update current price if we got today's or recent data
+  if(latestDate&&latestAvg){
+    db.priceRaw=latestAvg;
+    db.priceDate=latestDate;
+    db.priceSource='cardamom.farm (Puttady/Bodinaykanur)';
+    saveLocal();
+    triggerSync(false);
+    if(S.tab==='dashboard')render();
+    showToast('Price updated: ₹'+latestAvg.toLocaleString('en-IN')+'/kg ✓');
+  }
+
+  localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
+}
+
 // ── 5AM IST SCHEDULER ────────────────────────────────────────────────────────
+function schedulePriceFetch(){
+  const IST=5.5*3600000;
+  const now=Date.now();
+  const istNow=new Date(now+IST);
+  const target=new Date(istNow);
+  target.setHours(18,0,0,0); // 6pm IST
+  let ms=target.getTime()-istNow.getTime();
+  if(ms<0)ms+=86400000;
+  setTimeout(()=>{fetchCardamomPrice();setInterval(fetchCardamomPrice,86400000);},ms);
+}
+
 function scheduleInsightsFetch(){
   const IST_OFFSET=5.5*3600000;
   const now=Date.now();
@@ -936,8 +1057,14 @@ function renderDashboard(){
   return`
 <div class="pbanner">
   <div class="pbanner-label">
-    <span>Cardamom prices · Vandanmedu</span>
-    <button class="manual-btn" onclick="showEditPrice()">Update</button>
+    <span>Cardamom prices · Puttady / Bodinaykanur</span>
+    <div style="display:flex;gap:6px">
+      <button class="manual-btn" onclick="fetchCardamomPrice();showToast('Fetching…')" style="display:flex;align-items:center;gap:4px">
+        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
+        Auto
+      </button>
+      <button class="manual-btn" onclick="showEditPrice()">Manual</button>
+    </div>
   </div>
   <div class="pbanner-grid">
     <div class="price-block">
@@ -950,6 +1077,42 @@ function renderDashboard(){
     </div>
   </div>
   ${hasPrice?`<div class="price-source">${db.priceSource||'Manual entry'} · ${db.priceDate||''}</div>`:''}
+  ${(()=>{
+    const hist=db.priceHistory||[];
+    if(hist.length<2)return'';
+    const recent=hist.slice(-14);
+    const maxP=Math.max(...recent.map(p=>p.avg));
+    const minP=Math.min(...recent.map(p=>p.avg));
+    const range=Math.max(maxP-minP,100);
+    const W=280,H=48,pad=4;
+    const pts=recent.map((p,i)=>{
+      const x=pad+i*(W-pad*2)/(recent.length-1);
+      const y=H-pad-(p.avg-minP)/range*(H-pad*2);
+      return[x,y];
+    });
+    const polyline=pts.map(([x,y])=>x+','+y).join(' ');
+    const area=pts.map(([x,y])=>x+','+y).join(' ')+' '+pts[pts.length-1][0]+','+(H)+' '+pts[0][0]+','+H;
+    const last=recent[recent.length-1];
+    const prev=recent[recent.length-2];
+    const trend=last.avg>prev.avg?'\u2191':'\u2193';
+    const trendColor=last.avg>prev.avg?'#86efac':'#fca5a5';
+    return`<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:10px;color:rgba(255,255,255,0.45)">14-day price trend (avg ₹/kg)</span>
+        <span style="font-size:11px;color:${trendColor};font-weight:600">${trend} ${last.avg.toLocaleString('en-IN')}</span>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">
+        <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#86efac" stop-opacity="0.3"/><stop offset="100%" stop-color="#86efac" stop-opacity="0"/></linearGradient></defs>
+        <polygon points="${area}" fill="url(#pg)"/>
+        <polyline points="${polyline}" fill="none" stroke="#86efac" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="${pts[pts.length-1][0]}" cy="${pts[pts.length-1][1]}" r="3" fill="#86efac"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:9px;color:rgba(255,255,255,0.3)">${recent[0].date.slice(5).replace('-','/')}</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.3)">${last.date.slice(5).replace('-','/')}</span>
+      </div>
+    </div>`;
+  })()}
 </div>
 
 <div class="card">
@@ -2513,7 +2676,7 @@ function confirmClearLocal(){
 }
 function doClearLocal(){
   localStorage.removeItem(DB_KEY);
-  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],priceHistory:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
   closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
 }
 
@@ -2604,3 +2767,6 @@ updateFabVisibility();
 // Single startup insights init — initInsights handles caching + debounce
 if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
+  schedulePriceFetch();
+  // Attempt price fetch on load (respects 12h rate limit)
+  setTimeout(fetchCardamomPrice,3000);
