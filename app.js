@@ -331,6 +331,11 @@ async function writeNamedFile(id,name,content){
 
 async function triggerSync(manual=false){
   if(S.syncing)return;
+  // Prevent rapid successive syncs — minimum 30s between auto-syncs
+  if(!manual){
+    const sinceLastSync=Date.now()-(cfg.lastSyncTs||0);
+    if(sinceLastSync<30000)return;
+  }
   if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
@@ -349,25 +354,55 @@ async function triggerSync(manual=false){
       // Verify cached ID still exists
       try{
         const check=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id`);
-        if(check.ok)file={id:cfg.driveFileId};
-        else cfg.driveFileId=null; // stale — clear it
-      }catch(e){cfg.driveFileId=null;}
+        if(check.ok){
+          const idJson=await check.json().catch(()=>null);
+          if(idJson?.id)file={id:cfg.driveFileId};
+          else{cfg.driveFileId=null;saveCfg();}
+        } else {cfg.driveFileId=null;saveCfg();}
+      }catch(e){cfg.driveFileId=null;saveCfg();}
     }
     if(!file)file=await findFile();
     if(!file){
-      const pp=normPP(cfg.passphrase);
-      const enc=await encrypt(db,pp);
-      // Double-check one more time before creating — prevents race between devices
-      const recheck=await findFile();
-      if(recheck){
-        file=recheck;
-        cfg.driveFileId=file.id;saveCfg();
+      // Use a Drive lock file to prevent simultaneous creation by multiple devices.
+      // Only the device that successfully creates the lock file proceeds to create data file.
+      const LOCK_FILE='vplantations_lock.tmp';
+      let gotLock=false;
+      try{
+        // Attempt to create lock file — fails if another device already created it
+        const lockCheck=await findNamedFile(LOCK_FILE);
+        if(!lockCheck){
+          await writeNamedFile(null,LOCK_FILE,cfg.deviceId||'lock');
+          gotLock=true;
+        }
+      }catch(e){gotLock=false;}
+
+      if(gotLock){
+        // We hold the lock — wait 1s for any concurrent creators to see our lock, then create
+        await new Promise(r=>setTimeout(r,1000));
+        // Final check — another device may have created between our lock and now
+        const finalCheck=await findFile();
+        if(finalCheck){
+          file=finalCheck;
+          cfg.driveFileId=file.id;saveCfg();
+        } else {
+          const pp=normPP(cfg.passphrase);
+          const enc=await encrypt(db,pp);
+          const res=await writeFile(null,enc);
+          cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
+          setSyncUI('ok','Synced ✓');
+          syncGeminiKey();
+          syncInsights();
+        }
+        // Release lock — delete the lock file
+        try{
+          const lf=await findNamedFile(LOCK_FILE);
+          if(lf)await driveFetch(`drive/v3/files/${lf.id}`,{method:'DELETE'});
+        }catch(e){}
       } else {
-        const res=await writeFile(null,enc);
-        cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
-        setSyncUI('ok','Synced ✓');
-        syncGeminiKey();
-        syncInsights();
+        // Another device holds the lock — wait 3s and retry by re-syncing
+        await new Promise(r=>setTimeout(r,3000));
+        file=await findFile();
+        if(file){cfg.driveFileId=file.id;saveCfg();}
       }
     }
     if(file&&!cfg.driveFileId){cfg.driveFileId=file.id;saveCfg();}
@@ -499,26 +534,17 @@ window.addEventListener('load',()=>{
     waitForGoogle()
       .then(()=>triggerSync(false))
       .catch(()=>{}); // Google API unavailable — skip, don't show error
-  } else {
-    // No token — schedule a gentle delayed attempt after user may have interacted
-    // This handles the case where the app was freshly installed / token expired
-    setTimeout(()=>{
-      if(loadCachedToken())triggerSync(false); // token appeared (e.g. via another tab)
-      // else: stay idle, user will tap Sync button which triggers auth properly
-    },3000);
   }
+  // No else — if no token, stay idle. User taps Sync to authenticate.
 });
 
 // Auto-sync every 5 mins
 setInterval(()=>{if(!document.hidden)triggerSync(false);},AUTO_SYNC_INTERVAL);
 
-// Auto-sync when app comes back to foreground — only if token cached
+// Foreground return — show updated online status but don't auto-sync
+// (auto-sync interval handles periodic sync; user can tap Sync manually)
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden&&loadCachedToken()){
-    waitForGoogle()
-      .then(()=>triggerSync(false))
-      .catch(()=>{});
-  }
+  if(!document.hidden)updateOnlineDot();
 });
 
 
