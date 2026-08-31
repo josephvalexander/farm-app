@@ -550,8 +550,52 @@ async function findNamedFile(name){
     ?`name='${name}' and '${folder}' in parents and trashed=false`
     :`name='${name}' and trashed=false`;
   const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)`);
-  const d=await r.json();return d.files?.[0]||null;
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`);
+  const d=await r.json();
+  const files=d.files||[];
+  // Auto-delete duplicates — keep most recent, delete the rest silently
+  if(files.length>1){
+    const toDelete=files.slice(1);
+    toDelete.forEach(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{}));
+    console.log(`[Drive] Cleaned up ${toDelete.length} duplicate(s) of "${name}"`);
+  }
+  return files[0]||null;
+}
+
+// Delete ALL files with a given name (for thorough cleanup)
+async function deleteAllNamed(name){
+  const folder=cfg.sharedFolderId;
+  const q=folder
+    ?`name='${name}' and '${folder}' in parents and trashed=false`
+    :`name='${name}' and trashed=false`;
+  const spaces=folder?'drive':'appDataFolder';
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  const d=await r.json();
+  const files=d.files||[];
+  await Promise.all(files.map(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{})));
+  return files.length;
+}
+
+// Full Drive cleanup — remove all duplicates of known files
+async function cleanupDrive(){
+  const allFiles=[...BACKUP_FILES, DRIVE_FILE, KEYS_DRIVE_FILE, INSIGHTS_DRIVE_FILE];
+  let totalCleaned=0;
+  for(const name of allFiles){
+    const folder=cfg.sharedFolderId;
+    const q=folder
+      ?`name='${name}' and '${folder}' in parents and trashed=false`
+      :`name='${name}' and trashed=false`;
+    const spaces=folder?'drive':'appDataFolder';
+    const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`);
+    const d=await r.json();
+    const files=d.files||[];
+    if(files.length>1){
+      const toDelete=files.slice(1);
+      await Promise.all(toDelete.map(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{})));
+      totalCleaned+=toDelete.length;
+    }
+  }
+  return totalCleaned;
 }
 
 async function rotateBackups(currentRaw){
@@ -640,6 +684,14 @@ async function triggerSync(manual=false){
     // Load Gemini key and shared insights in background after sync
     syncGeminiKey();
     syncInsights();
+    // Periodically auto-clean Drive duplicates — run roughly once per day
+    const lastClean=parseInt(localStorage.getItem('vp_last_clean')||'0');
+    if(Date.now()-lastClean>24*60*60*1000){
+      cleanupDrive().then(n=>{
+        if(n>0)console.log(`[Drive] Auto-cleaned ${n} duplicates`);
+        localStorage.setItem('vp_last_clean',Date.now().toString());
+      }).catch(()=>{});
+    }
   }catch(e){
     console.error('Sync error:',e);
     const msg=e.message||'';
@@ -2220,10 +2272,28 @@ function renderSettings(){
     🗑 Clear local data
   </button>
   <p style="font-size:13px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Getting "Wrong passphrase" errors? The Drive file may be corrupted. Delete it and re-upload a fresh copy.</p>
-  <button onclick="confirmResetDrive()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit">
+  <button onclick="confirmResetDrive()" style="width:100%;padding:11px;background:var(--rbg);border:1.5px solid var(--rbr);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--rd);cursor:pointer;font-family:inherit;margin-bottom:10px">
     ☁️ Reset Drive sync file
   </button>
+  <p style="font-size:13px;color:var(--tx2);margin-bottom:12px;line-height:1.5">Too many duplicate files in Drive? Clean up automatically — keeps the latest copy of each file, deletes the rest.</p>
+  <button onclick="runDriveCleanup()" style="width:100%;padding:11px;background:var(--sur2);border:1.5px solid var(--bor2);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--tx2);cursor:pointer;font-family:inherit">
+    🧹 Clean up Drive duplicates
+  </button>
 </div>`;
+}
+
+// DRIVE CLEANUP — removes duplicate files, keeps only the most recent of each
+async function runDriveCleanup(){
+  setSyncUI('syncing','Cleaning…');
+  try{
+    await getOAuthToken();
+    const cleaned=await cleanupDrive();
+    showToast(cleaned>0?`Cleaned up ${cleaned} duplicate file${cleaned>1?'s':''} ✓`:'No duplicates found — Drive is clean ✓');
+  }catch(e){
+    console.error('Cleanup failed:',e);
+    showToast('Cleanup failed: '+e.message);
+  }
+  setSyncUI('idle','Sync');
 }
 
 // RESET DRIVE FILE — deletes the corrupted Drive file so next sync creates a fresh one
