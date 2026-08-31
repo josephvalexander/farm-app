@@ -1555,110 +1555,396 @@ function renderDrying(){
 }
 
 function renderForecast(){
-  const plants=totalPlants();
   const now=new Date();
-  const thisYear=now.getFullYear(), thisMonth=now.getMonth();
+  const plants=totalPlants();
+  const noData=db.yields.length===0&&db.expenses.length===0;
+  if(noData)return`<div class="card"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3v18h18M7 16l4-5 4 3 4-6"/></svg><br>Add yield and expense records to see analytics</div></div>`;
 
-  // ── YIELD BASIS ──
-  // Use actual yield data from the last 12 months grouped by month-of-year
-  const yieldByMo={};  // month index (0-11) → [qty, ...]
+  // ── HELPERS ──────────────────────────────────────────────────────────────────
+  const moKey=d=>d.slice(0,7); // YYYY-MM
+  const moLabel=k=>{const[y,m]=k.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-IN',{month:'short',year:'2-digit'});};
+  const trendArrow=(curr,prev)=>prev<=0?'':curr>prev*1.05?'<span style="color:var(--g-mid)">↑</span>':curr<prev*0.95?'<span style="color:var(--r-tx)">↓</span>':'<span style="color:var(--tx3)">→</span>';
+  const pct=v=>v===Infinity||isNaN(v)?'—':Math.round(v)+'%';
+  const bar=(val,max,color='var(--brand-lite)')=>`<div style="flex:1;height:7px;background:var(--sur2);border-radius:4px;overflow:hidden;border:1px solid var(--bor)"><div style="width:${Math.min(100,Math.round(val/Math.max(max,1)*100))}%;height:100%;background:${color};border-radius:4px"></div></div>`;
+
+  // ── AGGREGATE BY MONTH ───────────────────────────────────────────────────────
+  const yieldByMo={},expByMo={},incByMo={},labByMo={};
   db.yields.forEach(y=>{
     if(!y.date)return;
-    const d=new Date(y.date+'-01');
-    const age=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
-    if(age>=0&&age<12){
-      const mo=d.getMonth();
-      if(!yieldByMo[mo])yieldByMo[mo]=[];
-      yieldByMo[mo].push(y.qty||0);
-    }
+    const k=moKey(y.date);
+    if(!yieldByMo[k])yieldByMo[k]=0;
+    yieldByMo[k]+=(y.qty||0);
+    if(y.labourers){if(!labByMo[k])labByMo[k]={kg:0,days:0};labByMo[k].kg+=(y.qty||0);labByMo[k].days+=(y.labourers||0);}
   });
-  // Monthly avg from actuals, fall back to seasonal pattern if no data
-  const PEAK_PAT=[0.04,0.04,0.05,0.06,0.07,0.08,0.12,0.14,0.13,0.11,0.09,0.07]; // seasonal distribution
-  const totalActualYield=db.yields.reduce((s,y)=>s+(y.qty||0),0);
-  const annualYield=totalActualYield>0?totalActualYield*(12/Math.max(db.yields.length,1)):plants*0.45;
-
-  // ── EXPENSE BASIS ──
-  // Group actual expenses by category and month, compute monthly averages
-  const expByCat={labor:0,pesticide:0,rawmat:0,crop:0,other:0};
-  const expMonths=new Set();
   db.expenses.forEach(e=>{
-    if(e.date)expMonths.add(e.date.slice(0,7));
-    expByCat[e.category]=(expByCat[e.category]||0)+(e.amount||0);
+    if(!e.date)return;
+    const k=moKey(e.date);
+    if(!expByMo[k])expByMo[k]={total:0,labor:0,pesticide:0,rawmat:0,crop:0,other:0};
+    expByMo[k].total+=(e.amount||0);
+    expByMo[k][e.category]=(expByMo[k][e.category]||0)+(e.amount||0);
   });
-  const nMonths=Math.max(expMonths.size,1);
-  const monthlyExpByCat={};
-  Object.entries(expByCat).forEach(([k,v])=>monthlyExpByCat[k]=v/nMonths);
-  const totalMonthlyExp=Object.values(monthlyExpByCat).reduce((s,v)=>s+v,0);
-
-  // ── 8-MONTH ROWS ──
-  const isPeakMo=mo=>[6,7,8,9].includes(mo); // Jul–Oct (0-indexed)
-  const rows=Array.from({length:5},(_,i)=>{
-    const d=new Date(thisYear,thisMonth+i+1,1);
-    const mo=d.getMonth();
-    const isPeak=isPeakMo(mo);
-    // Projected yield: use actual monthly avg if available, else pattern
-    const pat=PEAK_PAT[mo];
-    const projYield=yieldByMo[mo]
-      ?Math.round(yieldByMo[mo].reduce((s,v)=>s+v,0)/yieldByMo[mo].length)
-      :Math.round(annualYield*pat);
-    // Projected expenses: scale by seasonal factor
-    const expScale=isPeak?1.3:0.85;
-    const projExp=Math.round(totalMonthlyExp*expScale);
-    const projExpByCat={};
-    Object.entries(monthlyExpByCat).forEach(([k,v])=>projExpByCat[k]=Math.round(v*expScale));
-    return{
-      label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),
-      mo,isPeak,projYield,projExp,projExpByCat,
-      hasActual:!!yieldByMo[mo]
-    };
+  db.incomes.forEach(i=>{
+    if(!i.date)return;
+    const k=moKey(i.date);
+    if(!incByMo[k])incByMo[k]=0;
+    incByMo[k]+=(i.qty||0)*(i.pricePerKg||0);
   });
 
-  const maxYield=Math.max(...rows.map(r=>r.projYield),1);
-  const maxExp=Math.max(...rows.map(r=>r.projExp),1);
-  const CL2={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw mat.',crop:'Crop',other:'Other'};
-  const expColors={labor:'var(--brand-glow)',pesticide:'var(--r-tx)',rawmat:'var(--a-mid)',crop:'var(--b-tx)',other:'var(--tx3)'};
+  // All months that appear in any record
+  const allMos=[...new Set([...Object.keys(yieldByMo),...Object.keys(expByMo),...Object.keys(incByMo)])].sort();
+  const last6=allMos.slice(-6);
+  const last12=allMos.slice(-12);
+
+  // Totals
+  const totalYield=db.yields.reduce((s,y)=>s+(y.qty||0),0);
+  const totalExp=db.expenses.reduce((s,e)=>s+(e.amount||0),0);
+  const totalInc=db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const totalLaborExp=db.expenses.filter(e=>e.category==='labor').reduce((s,e)=>s+(e.amount||0),0);
+
+  // ── SECTION PERFORMANCE RANKING ──────────────────────────────────────────────
+  const secYield={};
+  db.yields.forEach(y=>{const k=y.sectionId||'__all';secYield[k]=(secYield[k]||0)+(y.qty||0);});
+  const secRanked=Object.entries(secYield)
+    .map(([id,kg])=>{
+      const sec=db.sections.find(s=>s.id===id);
+      const plants=sec?.plants||0;
+      return{name:sec?sec.name:'All sections',kg,plants,kgPerPlant:plants>0?+(kg/plants).toFixed(2):null};
+    })
+    .sort((a,b)=>b.kg-a.kg);
+  const maxSecKg=Math.max(...secRanked.map(s=>s.kg),1);
+
+  // ── HARVEST TREND (last 6 months) ─────────────────────────────────────────────
+  const harvestTrend=last6.map(k=>({mo:k,label:moLabel(k),kg:yieldByMo[k]||0}));
+  const maxHarvest=Math.max(...harvestTrend.map(r=>r.kg),1);
+  const prevHarvest=harvestTrend.length>=2?harvestTrend[harvestTrend.length-2].kg:0;
+  const currHarvest=harvestTrend.length>=1?harvestTrend[harvestTrend.length-1].kg:0;
+  const avg6=harvestTrend.reduce((s,r)=>s+r.kg,0)/Math.max(harvestTrend.length,1);
+
+  // ── BEST HARVEST MONTH (by month-of-year across all history) ─────────────────
+  const byMoOfYear=Array(12).fill(0).map(()=>({total:0,count:0}));
+  db.yields.forEach(y=>{if(!y.date)return;const mo=parseInt(y.date.slice(5,7))-1;byMoOfYear[mo].total+=(y.qty||0);byMoOfYear[mo].count++;});
+  const moNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const bestMoIdx=byMoOfYear.reduce((bi,m,i,a)=>m.total>a[bi].total?i:bi,0);
+  const bestMoData=byMoOfYear.map((m,i)=>({label:moNames[i],avg:m.count>0?Math.round(m.total/m.count):0}));
+  const maxMoAvg=Math.max(...bestMoData.map(m=>m.avg),1);
+
+  // ── YIELD PER LABOURER ────────────────────────────────────────────────────────
+  const labMos=Object.entries(labByMo).sort().slice(-6);
+  const hasLabData=labMos.length>0;
+  const maxLabEff=hasLabData?Math.max(...labMos.map(([,v])=>v.days>0?v.kg/v.days:0),1):1;
+
+  // ── COST PER KG ───────────────────────────────────────────────────────────────
+  const costPerKg=totalYield>0?totalExp/totalYield:null;
+  const last3Mos=last6.slice(-3);
+  const cpkByMo=last3Mos.map(k=>({
+    label:moLabel(k),
+    cpk:(yieldByMo[k]||0)>0?(expByMo[k]?.total||0)/(yieldByMo[k]||1):null
+  }));
+
+  // ── GROSS MARGIN TREND ────────────────────────────────────────────────────────
+  const marginTrend=last6.map(k=>{
+    const inc=incByMo[k]||0,exp=expByMo[k]?.total||0;
+    const margin=inc>0?Math.round((inc-exp)/inc*100):null;
+    return{label:moLabel(k),inc,exp,margin,profit:inc-exp};
+  });
+  const prevMargin=marginTrend.length>=2?marginTrend[marginTrend.length-2].margin:null;
+  const currMargin=marginTrend.length>=1?marginTrend[marginTrend.length-1].margin:null;
+
+  // ── EXPENSE CATEGORY DRIFT ────────────────────────────────────────────────────
+  const cats=['labor','pesticide','rawmat','crop','other'];
+  const catColors={labor:'var(--brand-lite)',pesticide:'var(--r-mid)',rawmat:'var(--a-mid)',crop:'var(--b-mid)',other:'var(--tx3)'};
+  const half=Math.ceil(allMos.length/2);
+  const firstHalf=allMos.slice(0,half),secondHalf=allMos.slice(half);
+  const sumCat=(mos,cat)=>mos.reduce((s,k)=>s+(expByMo[k]?.[cat]||0),0);
+  const catDrift=cats.map(c=>{
+    const a=sumCat(firstHalf,c),b=sumCat(secondHalf,c);
+    const drift=a>0?Math.round((b-a)/a*100):null;
+    return{cat:c,label:CL[c],total:b,drift};
+  }).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+  const maxCatTotal=Math.max(...catDrift.map(c=>c.total),1);
+
+  // ── BREAK-EVEN PRICE ──────────────────────────────────────────────────────────
+  const recentMos=last6;
+  const recentYield=recentMos.reduce((s,k)=>s+(yieldByMo[k]||0),0);
+  const recentExp=recentMos.reduce((s,k)=>s+(expByMo[k]?.total||0),0);
+  const breakEven=recentYield>0?Math.ceil(recentExp/recentYield):null;
+  const lastSalePrice=db.incomes.length>0?db.incomes[db.incomes.length-1].pricePerKg:null;
+
+  // ── INCOME VS EXPENSE WATERFALL (monthly, last 6) ─────────────────────────────
+  const waterfall=last6.map(k=>({
+    label:moLabel(k),
+    inc:Math.round(incByMo[k]||0),
+    exp:Math.round(expByMo[k]?.total||0),
+    profit:Math.round((incByMo[k]||0)-(expByMo[k]?.total||0))
+  }));
+  const maxWF=Math.max(...waterfall.map(w=>Math.max(w.inc,w.exp)),1);
+
+  // ── LABOUR COST % OF INCOME ───────────────────────────────────────────────────
+  const laborPct=totalInc>0?Math.round(totalLaborExp/totalInc*100):null;
+  const laborMoTrend=last6.map(k=>({
+    label:moLabel(k),
+    pct:(incByMo[k]||0)>0?Math.round((expByMo[k]?.labor||0)/(incByMo[k]||1)*100):null
+  }));
 
   return`
-<div class="card">
-  <div class="ct">Basis</div>
-  <div class="mg">
-    <div class="met b"><div class="ml">Total plants</div><div class="mv">${plants}</div></div>
-    <div class="met g"><div class="ml">Actual yield (all time)</div><div class="mv">${totalActualYield} kg</div><div class="ms">${db.yields.length} records</div></div>
-    <div class="met"><div class="ml">Monthly avg exp</div><div class="mv" style="font-size:16px">${fc(totalMonthlyExp)}</div><div class="ms">over ${nMonths} months</div></div>
-    <div class="met a"><div class="ml">Peak harvest</div><div class="mv" style="font-size:13px">Jul – Oct</div></div>
+
+<!-- ════ YIELD ANALYSIS ════ -->
+<div class="card" style="margin-bottom:6px">
+  <div style="font-size:11px;font-weight:700;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">Yield analysis</div>
+  <div class="mg" style="margin-bottom:0">
+    <div class="met g"><div class="ml">Total yield</div><div class="mv">${totalYield} kg</div><div class="ms">${db.yields.length} records</div></div>
+    <div class="met"><div class="ml">6-month avg</div><div class="mv">${Math.round(avg6)} kg/mo</div><div class="ms">last 6 months</div></div>
   </div>
-  <p style="font-size:11px;color:var(--tx3);margin-top:10px;line-height:1.5">
-    Yield projection uses <strong>actual recorded data</strong> for months with history, seasonal pattern for others.
-    Expense projection scales your average by season.
-  </p>
 </div>
 
+<!-- Section performance -->
 <div class="card">
-  <div class="ct">Projected expenses — next 5 months</div>
-  ${rows.map(r=>`
-  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:13px;font-weight:600">${r.label}${r.isPeak?'<span class="pk" style="margin-left:4px">Peak</span>':''}</span>
-      <span style="font-size:14px;font-weight:700;color:var(--a-mid)">${fc(r.projExp)}</span>
-    </div>
-    <div style="display:flex;gap:3px;height:6px;border-radius:4px;overflow:hidden">
-      ${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>`
-        <div style="flex:${v};background:${expColors[cat]};min-width:3px" title="${CL2[cat]}: ${fc(v)}"></div>
-      `).join('')}
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
-      ${Object.entries(r.projExpByCat).filter(([,v])=>v>0).map(([cat,v])=>`
-        <span style="font-size:10px;color:var(--tx3)">${CL2[cat]} ${fc(v)}</span>
-      `).join('')}
+  <div class="ct">Section performance</div>
+  ${secRanked.length===0?'<div class="empty" style="padding:16px">No yield data yet</div>':secRanked.map((s,i)=>`
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bor)">
+    <div style="width:18px;height:18px;border-radius:50%;background:${i===0?'var(--g-bg)':'var(--sur2)'};border:1.5px solid ${i===0?'var(--g-bor)':'var(--bor)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${i===0?'var(--g-tx)':'var(--tx3)'};flex-shrink:0">${i+1}</div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:13px;font-weight:600;color:var(--tx)">${esc(s.name)}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--g-tx)">${s.kg} kg</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${bar(s.kg,maxSecKg,'var(--g-mid)')}
+        <span style="font-size:10px;color:var(--tx3);white-space:nowrap">${s.kgPerPlant!==null?s.kgPerPlant+' kg/plant':s.plants===0?'no plants set':''}</span>
+      </div>
     </div>
   </div>`).join('')}
 </div>
 
-${db.expenses.length===0?`
-<div class="sbox">
-  <h3>No expense data yet</h3>
-  <p>Add expenses in the Expenses tab to get accurate projections. Currently showing a flat estimate.</p>
-</div>`:''}
+<!-- Harvest trend -->
+<div class="card">
+  <div class="ct">Harvest trend <span style="font-weight:400;color:var(--tx3)">— last 6 months</span>
+    <span>${trendArrow(currHarvest,prevHarvest)}</span>
+  </div>
+  ${harvestTrend.length===0?'<div class="empty" style="padding:16px">No harvest data</div>':
+  `<div style="display:flex;align-items:flex-end;gap:6px;height:80px;margin-bottom:8px">
+    ${harvestTrend.map(r=>`
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%">
+      <div style="flex:1;display:flex;align-items:flex-end;width:100%">
+        <div style="width:100%;background:${r.kg>=avg6?'var(--g-mid)':'var(--g-bg)'};border:1px solid var(--g-bor);border-radius:4px 4px 0 0;height:${Math.max(4,Math.round(r.kg/maxHarvest*100))}%" title="${r.kg} kg"></div>
+      </div>
+      <div style="font-size:9px;color:var(--tx3);text-align:center">${r.label}</div>
+    </div>`).join('')}
+  </div>
+  <div style="font-size:11px;color:var(--tx3)">Darker bar = above 6-month average (${Math.round(avg6)} kg)</div>`}
+</div>
+
+<!-- Best harvest month -->
+<div class="card">
+  <div class="ct">Best harvest month
+    <span style="font-size:12px;font-weight:600;color:var(--g-mid)">${byMoOfYear[bestMoIdx].count>0?moNames[bestMoIdx]:'—'}</span>
+  </div>
+  ${byMoOfYear.every(m=>m.count===0)?'<div class="empty" style="padding:16px">Need more data across different months</div>':
+  `<div style="display:flex;align-items:flex-end;gap:3px;height:70px;margin-bottom:4px">
+    ${bestMoData.map((m,i)=>`
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%">
+      <div style="flex:1;display:flex;align-items:flex-end;width:100%">
+        <div style="width:100%;background:${i===bestMoIdx?'var(--brand-lite)':m.avg>0?'var(--g-bg)':'var(--sur2)'};border-radius:3px 3px 0 0;height:${m.avg>0?Math.max(3,Math.round(m.avg/maxMoAvg*100)):2}%;border:1px solid ${i===bestMoIdx?'var(--brand-lite)':'var(--bor)'}"></div>
+      </div>
+      <div style="font-size:8px;color:${i===bestMoIdx?'var(--brand-lite)':'var(--tx3)'};font-weight:${i===bestMoIdx?700:400};margin-top:2px">${m.label.slice(0,1)}</div>
+    </div>`).join('')}
+  </div>
+  <div style="font-size:11px;color:var(--tx3)">Average yield by calendar month across all recorded history</div>`}
+</div>
+
+<!-- Yield per labourer -->
+<div class="card">
+  <div class="ct">Yield per labourer <span style="font-weight:400;color:var(--tx3)">kg/person/day</span></div>
+  ${!hasLabData?'<div class="empty" style="padding:16px">Add "Labourers picking" when recording yield to see efficiency data</div>':
+  `${labMos.map(([k,v])=>{const eff=v.days>0?+(v.kg/v.days).toFixed(1):0;return`
+  <div class="br-row">
+    <div class="br-lbl">${moLabel(k)}</div>
+    ${bar(eff,maxLabEff,'var(--b-mid)')}
+    <div class="br-val">${eff} kg</div>
+  </div>`;}).join('')}`}
+</div>
+
+<!-- ════ FINANCIAL ANALYSIS ════ -->
+<div class="card" style="margin-bottom:6px">
+  <div style="font-size:11px;font-weight:700;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">Financial analysis</div>
+  <div class="mg">
+    <div class="met g"><div class="ml">Total income</div><div class="mv" style="font-size:16px">${fc(totalInc)}</div></div>
+    <div class="met a"><div class="ml">Total expenses</div><div class="mv" style="font-size:16px">${fc(totalExp)}</div></div>
+    <div class="met ${totalInc-totalExp>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv" style="font-size:16px">${fc(totalInc-totalExp)}</div></div>
+    <div class="met b"><div class="ml">Gross margin</div><div class="mv">${totalInc>0?pct((totalInc-totalExp)/totalInc*100):'—'}</div></div>
+  </div>
+</div>
+
+<!-- Cost per kg -->
+<div class="card">
+  <div class="ct">Cost per kg
+    <span style="font-size:16px;font-weight:700;color:var(--a-mid)">${costPerKg?'₹'+Math.round(costPerKg):db.yields.length===0?'No yield data':'—'}</span>
+  </div>
+  ${cpkByMo.some(m=>m.cpk!==null)?`
+  ${cpkByMo.map(m=>`
+  <div class="br-row">
+    <div class="br-lbl">${m.label}</div>
+    ${bar(m.cpk||0,Math.max(...cpkByMo.map(x=>x.cpk||0),1),'var(--a-mid)')}
+    <div class="br-val">${m.cpk?'₹'+Math.round(m.cpk):'—'}</div>
+  </div>`).join('')}
+  <div style="font-size:11px;color:var(--tx3);margin-top:8px">Total expenses ÷ total kg harvested. Lower is better.</div>`:'<div style="font-size:12px;color:var(--tx3)">Need both yield and expense records in the same months</div>'}
+</div>
+
+<!-- Gross margin trend -->
+<div class="card">
+  <div class="ct">Gross margin trend
+    ${currMargin!==null?`<span style="font-size:14px;font-weight:700;color:${currMargin>=0?'var(--g-mid)':'var(--r-tx)'}">${currMargin}%</span>`:''}
+    ${currMargin!==null&&prevMargin!==null?trendArrow(currMargin,prevMargin):''}
+  </div>
+  ${marginTrend.every(m=>m.inc===0&&m.exp===0)?'<div class="empty" style="padding:16px">No income or expense data</div>':
+  marginTrend.map(m=>`
+  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font-size:12px;color:var(--tx2)">${m.label}</span>
+      <div style="display:flex;gap:12px;align-items:center">
+        <span style="font-size:11px;color:var(--tx3)">${fc(m.inc)} in · ${fc(m.exp)} out</span>
+        <span style="font-size:13px;font-weight:700;color:${m.profit>=0?'var(--g-mid)':'var(--r-tx)'}">${m.margin!==null?m.margin+'%':'—'}</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:2px;height:6px;border-radius:4px;overflow:hidden;background:var(--sur2)">
+      ${m.inc>0?`<div style="width:${Math.round(m.inc/maxWF*100)}%;background:var(--g-mid);border-radius:4px 0 0 4px"></div>`:''}
+      ${m.exp>0?`<div style="width:${Math.round(m.exp/maxWF*100)}%;background:var(--r-mid);border-radius:0 4px 4px 0"></div>`:''}
+    </div>
+  </div>`).join('')}
+</div>
+
+<!-- Expense category drift -->
+<div class="card">
+  <div class="ct">Expense category drift</div>
+  ${catDrift.length===0?'<div class="empty" style="padding:16px">No expense data</div>':
+  `<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Comparing first half vs second half of your expense history</div>
+  ${catDrift.map(c=>`
+  <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bor)">
+    <div style="width:68px;flex-shrink:0">
+      <div style="font-size:12px;color:var(--tx);font-weight:500">${c.label}</div>
+      <div style="font-size:10px;color:var(--tx3)">${fc(c.total)}</div>
+    </div>
+    ${bar(c.total,maxCatTotal,catColors[c.cat])}
+    <div style="width:44px;text-align:right;flex-shrink:0">
+      ${c.drift!==null?`<span style="font-size:12px;font-weight:700;color:${c.drift>10?'var(--r-tx)':c.drift<-10?'var(--g-mid)':'var(--tx3)'}">${c.drift>0?'+':''}${c.drift}%</span>`:'<span style="font-size:11px;color:var(--tx3)">new</span>'}
+    </div>
+  </div>`).join('')}
+  <div style="font-size:10px;color:var(--tx3);margin-top:8px">% change vs earlier period. Red = growing cost, green = shrinking.</div>`}
+</div>
+
+<!-- Break-even price -->
+<div class="card">
+  <div class="ct">Break-even price</div>
+  <div style="display:flex;align-items:flex-end;gap:20px;margin-bottom:14px">
+    <div>
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:3px">Break-even</div>
+      <div style="font-size:32px;font-weight:700;color:var(--tx);letter-spacing:-1px">${breakEven?'₹'+breakEven:db.yields.length===0?'—':fc(0)}<span style="font-size:13px;color:var(--tx3);font-weight:400">/kg</span></div>
+    </div>
+    ${lastSalePrice?`
+    <div>
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:3px">Last sale price</div>
+      <div style="font-size:24px;font-weight:700;color:${lastSalePrice>=(breakEven||0)?'var(--g-mid)':'var(--r-tx)'};letter-spacing:-0.5px">₹${lastSalePrice}<span style="font-size:12px;font-weight:400">/kg</span></div>
+    </div>`:''}
+  </div>
+  ${breakEven&&lastSalePrice?`
+  <div style="background:${lastSalePrice>=breakEven?'var(--g-bg)':'var(--r-bg)'};border:1px solid ${lastSalePrice>=breakEven?'var(--g-bor)':'var(--r-bor)'};border-radius:var(--rs);padding:10px 12px;font-size:12px;color:${lastSalePrice>=breakEven?'var(--g-tx)':'var(--r-tx)'}">
+    ${lastSalePrice>=breakEven?`Selling at ₹${lastSalePrice}/kg gives you ₹${Math.round((lastSalePrice-breakEven))} margin per kg (${Math.round((lastSalePrice-breakEven)/lastSalePrice*100)}% above break-even)`:`Current sale price is ₹${Math.round(breakEven-lastSalePrice)} below break-even — expenses exceed income at this price`}
+  </div>`:''}
+  <div style="font-size:11px;color:var(--tx3);margin-top:10px">Based on last 6 months of expenses and yield records.</div>
+</div>
+
+<!-- Income vs expense waterfall -->
+<div class="card">
+  <div class="ct">Income vs expenses — monthly</div>
+  ${waterfall.every(w=>w.inc===0&&w.exp===0)?'<div class="empty" style="padding:16px">No income or expense data yet</div>':
+  waterfall.map(w=>`
+  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+      <span style="font-size:12px;color:var(--tx2);font-weight:500">${w.label}</span>
+      <span style="font-size:13px;font-weight:700;color:${w.profit>=0?'var(--g-mid)':'var(--r-tx)'}">
+        ${w.profit>=0?'+':''}${fc(w.profit)}
+      </span>
+    </div>
+    ${w.inc>0?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+      <div style="width:36px;font-size:10px;color:var(--tx3)">In</div>
+      ${bar(w.inc,maxWF,'var(--g-mid)')}
+      <div style="width:52px;text-align:right;font-size:11px;color:var(--g-mid)">${fc(w.inc)}</div>
+    </div>`:''}
+    ${w.exp>0?`<div style="display:flex;align-items:center;gap:6px">
+      <div style="width:36px;font-size:10px;color:var(--tx3)">Out</div>
+      ${bar(w.exp,maxWF,'var(--a-mid)')}
+      <div style="width:52px;text-align:right;font-size:11px;color:var(--a-mid)">${fc(w.exp)}</div>
+    </div>`:''}
+  </div>`).join('')}
+</div>
+
+<!-- ════ LABOUR & OPERATIONS ════ -->
+<div class="card" style="margin-bottom:6px">
+  <div style="font-size:11px;font-weight:700;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">Labour &amp; operations</div>
+  <div class="mg">
+    <div class="met a"><div class="ml">Total labour cost</div><div class="mv" style="font-size:16px">${fc(totalLaborExp)}</div><div class="ms">${totalExp>0?Math.round(totalLaborExp/totalExp*100)+'% of expenses':''}</div></div>
+    <div class="met ${laborPct!==null&&laborPct<=55?'g':'r'}"><div class="ml">Labour % of income</div><div class="mv">${laborPct!==null?laborPct+'%':'—'}</div><div class="ms">benchmark: 40–55%</div></div>
+  </div>
+</div>
+
+<!-- Labour cost % of income -->
+<div class="card">
+  <div class="ct">Labour cost as % of income</div>
+  ${laborMoTrend.every(m=>m.pct===null)?'<div class="empty" style="padding:16px">Need both labour expenses and income records</div>':
+  laborMoTrend.map(m=>`
+  <div class="br-row">
+    <div class="br-lbl">${m.label}</div>
+    ${bar(m.pct||0,100,m.pct!==null&&m.pct>55?'var(--r-mid)':m.pct!==null&&m.pct<=40?'var(--g-mid)':'var(--a-mid)')}
+    <div class="br-val">${m.pct!==null?m.pct+'%':'—'}</div>
+  </div>`).join('')+`<div style="font-size:10px;color:var(--tx3);margin-top:8px">Industry benchmark: 40–55%. Green = efficient, red = high.</div>`}
+</div>
+
+<!-- Harvest efficiency over time -->
+<div class="card">
+  <div class="ct">Harvest efficiency over time</div>
+  ${!hasLabData?'<div class="empty" style="padding:16px">Add labourer count when recording yield to track efficiency</div>':
+  `${labMos.map(([k,v])=>{
+    const eff=v.days>0?+(v.kg/v.days).toFixed(1):0;
+    return`<div class="br-row">
+    <div class="br-lbl">${moLabel(k)}</div>
+    ${bar(eff,maxLabEff,eff>=2?'var(--g-mid)':eff>=1?'var(--a-mid)':'var(--r-mid)')}
+    <div class="br-val">${eff} kg/d</div>
+  </div>`;}).join('')}
+  <div style="font-size:10px;color:var(--tx3);margin-top:8px">kg harvested per labourer per picking day</div>`}
+</div>
+
+<!-- Projected expenses -->
+${(()=>{
+  const isPeakMo=mo=>[6,7,8,9].includes(mo);
+  const expByCat2={labor:0,pesticide:0,rawmat:0,crop:0,other:0};
+  const expMonths2=new Set();
+  db.expenses.forEach(e=>{if(e.date)expMonths2.add(e.date.slice(0,7));expByCat2[e.category]=(expByCat2[e.category]||0)+(e.amount||0);});
+  const nM=Math.max(expMonths2.size,1);
+  const monthlyByCat={};Object.entries(expByCat2).forEach(([k,v])=>monthlyByCat[k]=v/nM);
+  const totalMoExp=Object.values(monthlyByCat).reduce((s,v)=>s+v,0);
+  const rows=Array.from({length:5},(_,i)=>{
+    const d=new Date(now.getFullYear(),now.getMonth()+i+1,1);
+    const mo=d.getMonth();const isPeak=isPeakMo(mo);
+    const scale=isPeak?1.3:0.85;
+    const projByCat={};Object.entries(monthlyByCat).forEach(([k,v])=>projByCat[k]=Math.round(v*scale));
+    return{label:d.toLocaleDateString('en-IN',{month:'short',year:'numeric'}),isPeak,projExp:Math.round(totalMoExp*scale),projByCat};
+  });
+  const CL2={labor:'Labor',pesticide:'Pesticide',rawmat:'Raw mat.',crop:'Crop',other:'Other'};
+  const expCols={labor:'var(--brand-glow)',pesticide:'var(--r-tx)',rawmat:'var(--a-mid)',crop:'var(--b-tx)',other:'var(--tx3)'};
+  return`<div class="card">
+  <div class="ct">Projected expenses — next 5 months</div>
+  ${rows.map(r=>`
+  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+      <span style="font-size:13px;font-weight:600">${r.label}${r.isPeak?'<span class="pk" style="margin-left:4px">Peak</span>':''}</span>
+      <span style="font-size:14px;font-weight:700;color:var(--a-mid)">${fc(r.projExp)}</span>
+    </div>
+    <div style="display:flex;gap:3px;height:6px;border-radius:4px;overflow:hidden">
+      ${Object.entries(r.projByCat).filter(([,v])=>v>0).map(([cat,v])=>`<div style="flex:${v};background:${expCols[cat]};min-width:3px"></div>`).join('')}
+    </div>
+  </div>`).join('')}
+</div>`;
+})()}
 `;
 }
 
