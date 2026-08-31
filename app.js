@@ -1098,7 +1098,7 @@ function renderSections(){
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${esc(s.name)}</div>
-      <div class="rs">${s.plants} plants · Age ${s.age}yr${s.notes?' · '+esc(s.notes):''}</div>
+      <div class="rs">${s.plants} plants${s.age?' · Planted '+s.age:''}${s.notes?' · '+esc(s.notes):''}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
       <div style="text-align:right">
@@ -1692,7 +1692,7 @@ function showEditSection(id){
   modal(`
 <div class="fg"><label class="fl">Section name</label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
 <div class="fg"><label class="fl">Number of plants</label><input id="f-sp" type="number" value="${s?.plants||''}" placeholder="100"/></div>
-<div class="fg"><label class="fl">Age of plants (years)</label><input id="f-sa" type="number" value="${s?.age||''}" placeholder="2"/></div>
+<div class="fg"><label class="fl">Year planted</label><input id="f-sa" type="number" value="${s?.age||''}" placeholder="${new Date().getFullYear()}"/></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-sno" type="text" value="${esc(s?.notes||'')}" placeholder="Slope, shade, irrigation…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSection('${id||''}')">Save</button></div>`,s?'Edit section':'Add section');
 }
