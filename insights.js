@@ -297,20 +297,40 @@ If page unreachable or no data: {"date":"","avg":0,"max":0,"source":"cardamom.fa
     if(!res.ok)throw new Error('Gemini price fetch failed: '+res.status);
 
     const data=await res.json();
-    const text=(data.content||data.candidates?.[0]?.content)?.parts?.map(p=>p.text||'').join('')||
-                data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
-    const clean=text.replace(/```json|```/g,'').trim();
+    // Extract text from Gemini response
+    const text=data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
+    console.log('[Price] Gemini raw response:', text.slice(0,300));
 
-    let parsed;
-    try{parsed=JSON.parse(clean);}
-    catch(e){
-      // Try extracting JSON from response
-      const m=clean.match(/\{[\s\S]*\}/);
-      if(m)parsed=JSON.parse(m[0]);
-      else throw new Error('Could not parse price JSON');
+    // Aggressively extract JSON — handles markdown fences, extra text, etc.
+    let parsed=null;
+    const clean=text.replace(/```json|```/gi,'').trim();
+
+    // Try 1: direct parse
+    try{parsed=JSON.parse(clean);}catch(e){}
+
+    // Try 2: extract first JSON object
+    if(!parsed){
+      const m=clean.match(/\{[^{}]*"found"[^{}]*\}/s)||clean.match(/\{[\s\S]*?\}/);
+      if(m){try{parsed=JSON.parse(m[0]);}catch(e){}}
     }
 
-    console.log('[Price] Gemini returned:', parsed);
+    // Try 3: manually extract key fields from text
+    if(!parsed){
+      console.warn('[Price] JSON parse failed — trying field extraction from:', clean.slice(0,200));
+      const avgM=clean.match(/"avg"\s*:\s*(\d+)/)||clean.match(/avg[^\d]*(\d{3,6})/i);
+      const dateM=clean.match(/"date"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)||clean.match(/(\d{4}-\d{2}-\d{2})/);
+      const maxM=clean.match(/"max"\s*:\s*(\d+)/);
+      if(avgM&&dateM){
+        parsed={found:true,date:dateM[1],avg:parseInt(avgM[1]),max:maxM?parseInt(maxM[1]):parseInt(avgM[1]),source:'cardamom.farm'};
+        console.log('[Price] Extracted fields manually:', parsed);
+      }
+    }
+
+    if(!parsed){
+      console.warn('[Price] Could not parse — full response:', text);
+      throw new Error('Could not parse price response');
+    }
+    console.log('[Price] Parsed:', parsed);
 
     // Reject if date is more than 7 days old — Gemini returning stale data
     if(parsed.found&&parsed.date){
