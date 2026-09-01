@@ -1,7 +1,7 @@
 // ── V-PLANTATIONS SERVICE WORKER ─────────────────────────────────────────────
 // CACHE_VERSION is injected by GitHub Actions on every push to main.
 // Each new version busts the old cache and triggers a silent background update.
-const CACHE_VERSION = 'vp-73ef32c';
+const CACHE_VERSION = 'vp-0319b50';
 const CACHE_NAME = `vp-${CACHE_VERSION}`;
 
 // All app shell files — network-first so code updates deploy immediately
