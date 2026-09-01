@@ -834,27 +834,24 @@ async function fetchCardamomPrice(force=false){
   console.log('[Price] Fetching cardamom price via Gemini search grounding…');
 
   const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const prompt=`Today is ${today}. Search the web RIGHT NOW for the latest cardamom auction prices in Kerala, India.
+  const prompt=`Today is ${today}. Search ONLY the website cardamom.farm for the latest cardamom auction price.
 
-Search these sources:
-1. cardamom.farm — shows Puttady/Bodinayakanur daily auction avg and max price
-2. spicesinfo.in — shows live Spices Board auction data
-3. Any other current cardamom price source for Kerala/Idukki
+Go to https://cardamom.farm and find the most recent daily average auction price shown on the site.
+cardamom.farm shows daily Puttady/Bodinayakanur small cardamom e-auction data including date, average price (₹/kg), and max price (₹/kg).
 
-Return ONLY a valid JSON object with no markdown, no explanation:
+Do NOT use any other website. Do NOT use training data or memory.
+
+Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
 {
-  "date": "YYYY-MM-DD of the most recent auction found",
-  "avg": numeric average price in INR per kg (integer, no commas),
-  "max": numeric max price in INR per kg (integer, no commas),
-  "source": "site name where you found this",
-  "found": true or false
+  "date": "YYYY-MM-DD of the auction date shown on cardamom.farm",
+  "avg": integer average price in INR per kg (e.g. 2984),
+  "max": integer max price in INR per kg (e.g. 4100),
+  "source": "cardamom.farm",
+  "found": true
 }
 
-Rules:
-- Only return prices from actual web search results found today
-- avg must be a plain integer like 2850 (not "₹2,850")
-- If no auction price found for today or yesterday, set found: false and return zeros
-- Do NOT invent prices from training data`;
+If cardamom.farm is unreachable or shows no price data, return:
+{"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
 
   try{
     const body=JSON.stringify({
@@ -904,11 +901,10 @@ Rules:
       db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
       if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
 
-      // Update current price
-      // Auto-fetch returns dried/auction price — store as priceDried
+      // Update dried price (auction price from cardamom.farm)
       db.priceDried=parsed.avg;
       db.priceDate=parsed.date;
-      db.priceSource=parsed.source||'Auto-fetched (Spices Board)';
+      db.priceSource='cardamom.farm';
       saveLocal();
       triggerSync(false);
       if(S.tab==='dashboard')render();
