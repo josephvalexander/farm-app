@@ -352,45 +352,76 @@ async function triggerSync(manual=false){
     await getOAuthToken();
 
     // ── FIND FILE ─────────────────────────────────────────────────────────────
-    // Strategy: cached ID → search → create (never run more than one create)
+    // Key insight: Drive search has eventual consistency — newly created files
+    // may not appear in search results for several seconds, causing duplicate creation.
+    // Fix: use a localStorage creation mutex + verify by ID before searching.
+    const CREATION_LOCK_KEY='vp_creating_file';
     let file=null;
 
-    // 1. Use cached file ID if we have one
+    // 1. Verify cached file ID directly (O(1), no search, no consistency issues)
     if(cfg.driveFileId){
       try{
         const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed`);
         if(chk.ok){
           const j=await chk.json().catch(()=>null);
-          if(j?.id&&!j.trashed)file={id:cfg.driveFileId};
+          if(j?.id&&!j.trashed){file={id:cfg.driveFileId};}
           else{cfg.driveFileId=null;saveCfg();}
         }else{cfg.driveFileId=null;saveCfg();}
       }catch(e){cfg.driveFileId=null;saveCfg();}
     }
 
-    // 2. Search Drive if no cached ID
+    // 2. Search only if no valid cached ID
     if(!file){
+      // Wait for any in-progress creation on this device to finish
+      const creationStart=parseInt(localStorage.getItem(CREATION_LOCK_KEY)||'0');
+      if(creationStart&&Date.now()-creationStart<15000){
+        // Another invocation on this device is currently creating — wait and retry
+        console.log('[Sync] Creation in progress — waiting 5s');
+        await new Promise(r=>setTimeout(r,5000));
+      }
       file=await findFile();
       if(file){cfg.driveFileId=file.id;saveCfg();}
     }
 
-    // 3. Create only if truly not found — and only once per session
+    // 3. Create — only if still not found and no creation lock active
     if(!file){
-      console.log('[Sync] No file found — creating new one');
-      const pp=normPP(cfg.passphrase);
-      const enc=await encrypt(db,pp);
-      const res=await writeFile(null,enc);
-      if(!res?.id)throw new Error('File creation failed — no ID returned');
-      cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
-      setSyncUI('ok','Synced ✓');
-      clearTimeout(syncTimeout);
-      _syncInFlight=false;
-      S.syncing=false;
-      setTimeout(()=>setSyncUI('idle','Sync'),2000);
-      syncGeminiKey();
-      syncInsights();
-      // Auto-cleanup duplicates after creation
-      setTimeout(()=>cleanupDrive().catch(()=>{}),5000);
-      return;
+      const lockTs=parseInt(localStorage.getItem(CREATION_LOCK_KEY)||'0');
+      if(lockTs&&Date.now()-lockTs<15000){
+        // Lock is fresh — another sync on this device just started creating
+        // Wait for it and retry finding
+        console.log('[Sync] Creation lock active — waiting');
+        await new Promise(r=>setTimeout(r,6000));
+        file=await findFile();
+        if(file){cfg.driveFileId=file.id;saveCfg();}
+      }
+
+      if(!file){
+        // Set creation lock before any async work
+        localStorage.setItem(CREATION_LOCK_KEY,Date.now().toString());
+        try{
+          console.log('[Sync] Creating new file');
+          const pp=normPP(cfg.passphrase);
+          const enc=await encrypt(db,pp);
+          const res=await writeFile(null,enc);
+          if(!res?.id)throw new Error('File creation returned no ID');
+          cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
+          setSyncUI('ok','Synced ✓');
+          clearTimeout(syncTimeout);
+          _syncInFlight=false;
+          S.syncing=false;
+          setTimeout(()=>setSyncUI('idle','Sync'),2000);
+          syncGeminiKey();
+          syncInsights();
+          setTimeout(()=>{
+            localStorage.removeItem(CREATION_LOCK_KEY);
+            cleanupDrive().catch(()=>{});
+          },8000);
+          return;
+        }catch(e){
+          localStorage.removeItem(CREATION_LOCK_KEY);
+          throw e;
+        }
+      }
     }
     if(file){
       const raw=await readFile(file.id);
@@ -575,7 +606,7 @@ function deleteItem(type,id){
   if(!db.deletedIds.includes(id))db.deletedIds.push(id);
   saveLocal();
   // Auto-sync after delete
-  setTimeout(()=>triggerSync(false),500);
+  setTimeout(()=>triggerSync(false),2000);
 }
 
 // ── AI INSIGHTS ENGINE (Gemini + Google Search Grounding) ────────────────────
@@ -2163,7 +2194,7 @@ function saveSection(id){
   const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.sections.findIndex(x=>x.id===id);if(i>=0)db.sections[i]={...db.sections[i],...data};}
   else db.sections.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 // SEASON — removed
@@ -2186,7 +2217,7 @@ function saveYield(id){
   const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,labourers:parseInt(document.getElementById('f-yl').value)||null,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 // EXPENSE
@@ -2211,7 +2242,7 @@ function saveExpense(id){
   const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,updatedAt:Date.now()};
   if(id){const i=db.expenses.findIndex(x=>x.id===id);if(i>=0)db.expenses[i]={...db.expenses[i],...data};}
   else db.expenses.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 // INCOME — note: price NOT prefilled
@@ -2243,7 +2274,7 @@ function saveIncome(id){
   const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.incomes.findIndex(x=>x.id===id);if(i>=0)db.incomes[i]={...db.incomes[i],...data};}
   else db.incomes.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 // MARKET PRICE
@@ -2264,7 +2295,7 @@ function savePrice(){
   db.priceRaw=r;
   db.priceDate=new Date().toISOString().slice(0,10);
   if(!db.priceSource||db.priceSource.startsWith('Auto'))db.priceSource='Manual entry';
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 
@@ -2313,7 +2344,7 @@ function saveDrying(id){
   if(!db.dryings)db.dryings=[];
   if(id){const i=db.dryings.findIndex(x=>x.id===id);if(i>=0)db.dryings[i]={...db.dryings[i],...data};}
   else db.dryings.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
 }
 
 // SHARED FOLDER SETUP
@@ -2789,4 +2820,4 @@ if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
   schedulePriceFetch();
   // Attempt price fetch on load (respects 12h rate limit)
-  setTimeout(()=>fetchCardamomPrice(false),3000);
+  setTimeout(()=>fetchCardamomPrice(false),8000);
