@@ -21,14 +21,24 @@ function confirmDel(type,id,label){
 function doDel(type,id){deleteItem(type,id);closeModal();render();}
 
 // SECTION
-const PLANT_TYPES=['Njallani','Sundari','Kumily','Other'];
+const PLANT_TYPES=['Njallani','Sundari','Kumily','Thiruthali','Other'];
 function showEditSection(id){
   const s=id?db.sections.find(x=>x.id===id):null;
   const ptOpts=PLANT_TYPES.map(t=>`<option value="${t}" ${(s?.plantType||'Njallani')===t?'selected':''}>${t}</option>`).join('');
   modal(`
 <div class="fg"><label class="fl">Section name <span style="color:var(--r-tx)">*</span></label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
 <div class="fg"><label class="fl">Number of plants</label><input id="f-sp" type="number" value="${s?.plants||''}" placeholder="100"/></div>
-<div class="fg"><label class="fl">Plant type</label><select id="f-spt">${ptOpts}</select></div>
+<div class="fg">
+  <label class="fl">Plant type</label>
+  <div style="position:relative">
+    <select id="f-spt" style="width:100%;padding:11px 36px 11px 13px;border:1.5px solid var(--brand-lite);border-radius:var(--rs);font-size:14px;background:var(--g-bg);color:var(--g-tx);font-family:inherit;appearance:none;-webkit-appearance:none;font-weight:600;cursor:pointer">
+      ${ptOpts}
+    </select>
+    <div style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--brand-lite)">
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 8l5 5 5-5"/></svg>
+    </div>
+  </div>
+</div>
 <div class="fg"><label class="fl">Year planted</label><input id="f-sa" type="number" value="${s?.age||''}" placeholder="${new Date().getFullYear()}"/></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-sno" type="text" value="${esc(s?.notes||'')}" placeholder="Slope, shade, irrigation…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSection('${id||''}')">Save</button></div>`,s?'Edit section':'Add section');

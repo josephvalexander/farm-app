@@ -245,22 +245,35 @@ async function fetchCardamomPrice(force=false){
 
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
-  const prompt=`Today is ${todayStr} (IST). Fetch the cardamom price shown on the HOMEPAGE of https://cardamom.farm
+  const prompt=`Today is ${todayStr} (IST). Open https://cardamom.farm and read the auction data shown on that page.
 
-IMPORTANT: Go to https://cardamom.farm (the main homepage, NOT /history or any subpage).
-The homepage displays a single current price prominently — the latest auction average price in ₹/kg.
-Read exactly what is shown on that homepage right now.
+The homepage shows one or more auction entries, each with:
+- A date (e.g. "01-Sep-2026")
+- An average price in ₹/kg (the large number, e.g. ₹3,055)
+- A max price (e.g. "Max price ₹3,615")
+- An auctioneer name
+- Quantity sold in kg
 
-Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
+There may be multiple auctions listed for the same date (different auctioneers).
+
+TASK:
+1. Find all auction entries for the most recent date shown on the page
+2. Calculate the weighted average price across all auctioneers for that date:
+   weighted avg = sum(avg_price × quantity) / sum(quantity)
+   If quantity is not visible, use a simple average of all avg prices
+3. Use the highest max price seen across all auctioneers as the max
+4. Report the most recent date's data only
+
+Return ONLY valid JSON — no markdown, no explanation:
 {
-  "date": "YYYY-MM-DD of the date shown on the cardamom.farm homepage",
-  "avg": integer average price shown in INR per kg (e.g. 3072),
-  "max": integer max price shown in INR per kg if visible (else same as avg),
+  "date": "YYYY-MM-DD",
+  "avg": integer weighted average price in INR per kg,
+  "max": integer highest max price in INR per kg,
   "source": "cardamom.farm",
   "found": true
 }
 
-If the page is unreachable or shows no price: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
+If page unreachable or no data: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
 
   try{
     const body=JSON.stringify({
