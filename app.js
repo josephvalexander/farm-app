@@ -905,9 +905,10 @@ Rules:
       if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
 
       // Update current price
-      db.priceRaw=parsed.avg;
+      // Auto-fetch returns dried/auction price — store as priceDried
+      db.priceDried=parsed.avg;
       db.priceDate=parsed.date;
-      db.priceSource=parsed.source||'Gemini search (Spices Board)';
+      db.priceSource=parsed.source||'Auto-fetched (Spices Board)';
       saveLocal();
       triggerSync(false);
       if(S.tab==='dashboard')render();
@@ -1095,14 +1096,20 @@ function renderDashboard(){
   <div class="pbanner-grid">
     <div class="price-block">
       <div class="price-type">Raw / Green</div>
-      <div class="price-val">${db.priceRaw?'₹'+db.priceRaw.toLocaleString('en-IN'):'<span style="opacity:0.4">—</span>'}<span>/kg</span></div>
+      ${db.priceRaw
+        ?`<div class="price-val">₹${db.priceRaw.toLocaleString('en-IN')}<span>/kg</span></div>`
+        :`<div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <input type="number" placeholder="Enter price" onkeydown="if(event.key==='Enter'){const v=parseFloat(this.value);if(v){db.priceRaw=v;db.priceDate=new Date().toISOString().slice(0,10);db.priceSource='Manual entry';saveLocal();render();triggerSync(false);}}" style="width:110px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 10px;color:#fff;font-size:16px;font-weight:600;font-family:inherit"/>
+            <button onclick="const i=this.previousElementSibling;const v=parseFloat(i.value);if(v){db.priceRaw=v;db.priceDate=new Date().toISOString().slice(0,10);db.priceSource='Manual entry';saveLocal();render();triggerSync(false);}" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 10px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>
+          </div>`}
     </div>
     <div class="price-block">
-      <div class="price-type">Dried</div>
+      <div class="price-type">Dried <span style="font-size:9px;opacity:0.5;margin-left:2px">auto</span></div>
       <div class="price-val">${db.priceDried?'₹'+db.priceDried.toLocaleString('en-IN'):'<span style="opacity:0.4">—</span>'}<span>/kg</span></div>
     </div>
   </div>
-  ${hasPrice?`<div class="price-source">${db.priceSource||'Manual entry'} · ${db.priceDate||''}</div>`:''}
+  ${db.priceDried?`<div class="price-source">${db.priceSource||'Auto-fetched'} · ${db.priceDate||''}</div>`:''}
+  ${db.priceRaw&&!db.priceDried?`<div class="price-source">Raw: Manual entry · ${db.priceDate||''}</div>`:''}
   ${(()=>{
     const hist=db.priceHistory||[];
     if(hist.length<2)return'';
@@ -2258,18 +2265,21 @@ function saveIncome(id){
 // MARKET PRICE
 function showEditPrice(){
   modal(`
-<div class="fg"><label class="fl">Raw / Green cardamom price (₹/kg)</label><input id="f-mr" type="number" value="${db.priceRaw||''}" placeholder="e.g. 1800"/></div>
-<div class="fg"><label class="fl">Dried cardamom price (₹/kg)</label><input id="f-md" type="number" value="${db.priceDried||''}" placeholder="e.g. 2500"/></div>
-<div class="fg"><label class="fl">Source / date</label><input id="f-ms" type="text" value="${esc(db.priceSource||'')}" placeholder="Vandanmedu auction, 13 Mar"/></div>
-<p style="font-size:11px;color:var(--tx3);margin-top:4px">Prices sync to all family members automatically.</p>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePrice()">Update</button></div>`,'Update market prices');
+<p style="font-size:13px;color:var(--tx2);margin-bottom:16px;line-height:1.5">Enter today's Raw / Green price from your local auction or trader. Shared across all devices.</p>
+<div class="fg">
+  <label class="fl">Raw / Green price (₹/kg)</label>
+  <input id="f-mr" type="number" value="${db.priceRaw||''}" placeholder="e.g. 2800" style="font-size:20px;font-weight:600;padding:12px 14px"/>
+</div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePrice()">Save</button></div>`,'Raw cardamom price');
+  setTimeout(()=>document.getElementById('f-mr')?.focus(),100);
 }
 function savePrice(){
-  const r=parseFloat(document.getElementById('f-mr').value),d=parseFloat(document.getElementById('f-md').value);
-  if(!r&&!d)return;
-  if(r)db.priceRaw=r;if(d)db.priceDried=d;
-  db.priceDate=new Date().toLocaleDateString('en-IN');
-  db.priceSource=document.getElementById('f-ms').value||'Manual entry';
+  const el=document.getElementById('f-mr');
+  const r=parseFloat(el.value);
+  if(!r){el.style.borderColor='var(--r-tx)';el.focus();return;}
+  db.priceRaw=r;
+  db.priceDate=new Date().toISOString().slice(0,10);
+  if(!db.priceSource||db.priceSource.startsWith('Auto'))db.priceSource='Manual entry';
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),500);
 }
 
