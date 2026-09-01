@@ -823,101 +823,101 @@ Provide 4-6 keyFactors, but ONLY for topics where you found actual news from the
 const PRICE_FETCH_KEY='vp_price_fetch_ts';
 const PRICE_FETCH_TTL=12*60*60*1000; // fetch at most every 12h
 
-async function fetchCardamomPrice(){
-  // Rate-limit: don't fetch more than once per 12h
+async function fetchCardamomPrice(force=false){
+  // Rate-limit: fetch at most once per 12h unless forced
   const last=parseInt(localStorage.getItem(PRICE_FETCH_KEY)||'0');
-  if(Date.now()-last<PRICE_FETCH_TTL)return;
+  if(!force&&Date.now()-last<PRICE_FETCH_TTL)return;
 
-  const PROXIES=[
-    'https://corsproxy.io/?'+encodeURIComponent('https://cardamom.farm/history'),
-    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent('https://cardamom.farm/history'),
-  ];
+  const key=await loadGeminiKey();
+  if(!key){console.log('[Price] No Gemini key — skipping auto-fetch');return;}
 
-  let html='';
-  for(const proxy of PROXIES){
-    try{
-      const r=await fetch(proxy,{signal:AbortSignal.timeout(10000)});
-      if(!r.ok)continue;
-      const t=await r.text();
-      if(t.length>500){html=t;break;}
-    }catch(e){continue;}
-  }
-  if(!html)return;
+  console.log('[Price] Fetching cardamom price via Gemini search grounding…');
 
-  // Parse auction records from the history page
-  // Pattern: date like "29 Aug 2026", avg price like "₹3,060", max price like "₹4,159"
-  const records=[];
-  // Split by auction blocks — each has a date and two price mentions
-  const dateRe=/\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})\b/g;
-  const priceRe=/₹([\d,]+)/g;
+  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const prompt=`Today is ${today}. Search the web RIGHT NOW for the latest cardamom auction prices in Kerala, India.
 
-  // Find all dates in document
-  const allDates=[...html.matchAll(dateRe)];
-  const allPrices=[...html.matchAll(priceRe)].map(m=>parseInt(m[1].replace(/,/g,''))).filter(p=>p>500&&p<200000);
+Search these sources:
+1. cardamom.farm — shows Puttady/Bodinayakanur daily auction avg and max price
+2. spicesinfo.in — shows live Spices Board auction data
+3. Any other current cardamom price source for Kerala/Idukki
 
-  // Group prices by date — each auction has avg and max price
-  // Strategy: find date positions, then grab prices between consecutive date positions
-  const monthMap={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
-  const datePositions=allDates.map(m=>({
-    idx:m.index,
-    dateStr:`${m[3]}-${String(monthMap[m[2]]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` // YYYY-MM-DD
-  }));
+Return ONLY a valid JSON object with no markdown, no explanation:
+{
+  "date": "YYYY-MM-DD of the most recent auction found",
+  "avg": numeric average price in INR per kg (integer, no commas),
+  "max": numeric max price in INR per kg (integer, no commas),
+  "source": "site name where you found this",
+  "found": true or false
+}
 
-  // Walk through price occurrences and tag by nearest preceding date
-  const pricePositions=[...html.matchAll(/₹([\d,]+)/g)].map(m=>({idx:m.index,val:parseInt(m[1].replace(/,/g,''))})).filter(p=>p.val>500&&p.val<200000);
+Rules:
+- Only return prices from actual web search results found today
+- avg must be a plain integer like 2850 (not "₹2,850")
+- If no auction price found for today or yesterday, set found: false and return zeros
+- Do NOT invent prices from training data`;
 
-  const byDate={};
-  pricePositions.forEach(p=>{
-    // Find the closest preceding date
-    let best=null;
-    for(const d of datePositions){
-      if(d.idx<p.idx)best=d;
-      else break;
+  try{
+    const body=JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      tools:[{google_search:{}}],
+      generationConfig:{temperature:0,maxOutputTokens:256}
+    });
+    let res=await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
+      {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(20000)}
+    );
+    // Retry without grounding if key doesn't support it
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      const msg=(err.error?.message||'').toLowerCase();
+      if(res.status===400&&(msg.includes('tool')||msg.includes('search')||msg.includes('grounding'))){
+        const body2=JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:256}});
+        res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:body2,signal:AbortSignal.timeout(20000)});
+      }
     }
-    if(!best)return;
-    if(!byDate[best.dateStr])byDate[best.dateStr]=[];
-    byDate[best.dateStr].push(p.val);
-  });
+    if(!res.ok)throw new Error('Gemini price fetch failed: '+res.status);
 
-  // For each date: avg of all avg prices (lower values), max of all max prices
-  const today=new Date().toISOString().slice(0,10);
-  let latestDate=null,latestAvg=null,latestMax=null;
+    const data=await res.json();
+    const text=(data.content||data.candidates?.[0]?.content)?.parts?.map(p=>p.text||'').join('')||
+                data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
+    const clean=text.replace(/```json|```/g,'').trim();
 
-  Object.entries(byDate).forEach(([date,prices])=>{
-    if(prices.length<1)return;
-    // Sort prices: in each auction block, lower price = avg, higher = max
-    // We expect pairs; take median of lower half as avg
-    prices.sort((a,b)=>a-b);
-    const mid=Math.floor(prices.length/2);
-    const avgPrices=prices.slice(0,Math.max(1,mid));
-    const maxPrices=prices.slice(mid);
-    const avgPrice=Math.round(avgPrices.reduce((s,v)=>s+v,0)/avgPrices.length);
-    const maxPrice=Math.max(...maxPrices);
+    let parsed;
+    try{parsed=JSON.parse(clean);}
+    catch(e){
+      // Try extracting JSON from response
+      const m=clean.match(/\{[\s\S]*\}/);
+      if(m)parsed=JSON.parse(m[0]);
+      else throw new Error('Could not parse price JSON');
+    }
 
-    if(avgPrice>500&&avgPrice<100000){
-      // Add to history
-      const existing=db.priceHistory.findIndex(p=>p.date===date);
-      const entry={date,avg:avgPrice,max:maxPrice,fetchedAt:Date.now()};
+    console.log('[Price] Gemini returned:', parsed);
+
+    if(parsed.found&&parsed.avg>500&&parsed.avg<200000&&parsed.date){
+      // Add to price history
+      const existing=db.priceHistory.findIndex(p=>p.date===parsed.date);
+      const entry={date:parsed.date,avg:parsed.avg,max:parsed.max||parsed.avg,fetchedAt:Date.now()};
       if(existing>=0)db.priceHistory[existing]=entry;
       else db.priceHistory.push(entry);
 
-      if(!latestDate||date>latestDate){latestDate=date;latestAvg=avgPrice;latestMax=maxPrice;}
+      // Keep last 60 days
+      db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
+      if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
+
+      // Update current price
+      db.priceRaw=parsed.avg;
+      db.priceDate=parsed.date;
+      db.priceSource=parsed.source||'Gemini search (Spices Board)';
+      saveLocal();
+      triggerSync(false);
+      if(S.tab==='dashboard')render();
+      showToast('Price updated · ₹'+parsed.avg.toLocaleString('en-IN')+'/kg ✓');
+      console.log('[Price] Updated: ₹'+parsed.avg+'/kg on '+parsed.date);
+    } else {
+      console.log('[Price] No auction price found for today/yesterday');
     }
-  });
-
-  // Keep last 60 days
-  db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
-  if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
-
-  // Update current price if we got today's or recent data
-  if(latestDate&&latestAvg){
-    db.priceRaw=latestAvg;
-    db.priceDate=latestDate;
-    db.priceSource='cardamom.farm (Puttady/Bodinaykanur)';
-    saveLocal();
-    triggerSync(false);
-    if(S.tab==='dashboard')render();
-    showToast('Price updated: ₹'+latestAvg.toLocaleString('en-IN')+'/kg ✓');
+  }catch(e){
+    console.warn('[Price] Fetch failed:',e.message);
   }
 
   localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
@@ -932,7 +932,7 @@ function schedulePriceFetch(){
   target.setHours(18,0,0,0); // 6pm IST
   let ms=target.getTime()-istNow.getTime();
   if(ms<0)ms+=86400000;
-  setTimeout(()=>{fetchCardamomPrice();setInterval(fetchCardamomPrice,86400000);},ms);
+  setTimeout(()=>{fetchCardamomPrice(false);setInterval(()=>fetchCardamomPrice(false),86400000);},ms);
 }
 
 function scheduleInsightsFetch(){
@@ -1085,7 +1085,7 @@ function renderDashboard(){
   <div class="pbanner-label">
     <span>Cardamom prices · Puttady / Bodinaykanur</span>
     <div style="display:flex;gap:6px">
-      <button class="manual-btn" onclick="fetchCardamomPrice();showToast('Fetching…')" style="display:flex;align-items:center;gap:4px">
+      <button class="manual-btn" onclick="localStorage.removeItem(PRICE_FETCH_KEY);fetchCardamomPrice(true);showToast('Fetching price…')" style="display:flex;align-items:center;gap:4px">
         <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
         Auto
       </button>
@@ -2795,4 +2795,4 @@ if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
   schedulePriceFetch();
   // Attempt price fetch on load (respects 12h rate limit)
-  setTimeout(fetchCardamomPrice,3000);
+  setTimeout(()=>fetchCardamomPrice(false),3000);
