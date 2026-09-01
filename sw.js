@@ -1,7 +1,7 @@
 // ── V-PLANTATIONS SERVICE WORKER ─────────────────────────────────────────────
 // CACHE_VERSION is injected by GitHub Actions on every push to main.
 // Each new version busts the old cache and triggers a silent background update.
-const CACHE_VERSION = 'vp-35c9f06';
+const CACHE_VERSION = 'vp-dev';
 const CACHE_NAME = `vp-${CACHE_VERSION}`;
 
 // All app shell files — network-first so code updates deploy immediately
@@ -22,7 +22,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting()) // activate immediately — don't wait for tabs to close
+      .then(() => self.skipWaiting()) // activate immediately on all tabs
   );
 });
 
@@ -87,7 +87,11 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ── MESSAGE: manual skip waiting ─────────────────────────────────────────────
+// ── MESSAGE: skip waiting (called by page when new SW installs) ──────────────
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
+
+// ── PERIODIC SYNC: check for updates in background ───────────────────────────
+// Browsers will call self.skipWaiting() on install, so new SW activates
+// as soon as all tabs are refreshed or the page reloads for any reason.

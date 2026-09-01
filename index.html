@@ -92,7 +92,7 @@
 <script>
 // ── SERVICE WORKER — AUTO-UPDATE ──────────────────────────────────────────────
 // New code pushed to GitHub → SW detects version change → silently downloads
-// new files in background → shows "Update ready" banner → one tap reloads.
+// new files in background → silently reloads with new code.
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js').then(reg=>{
 
@@ -104,21 +104,17 @@ if('serviceWorker' in navigator){
     // 2. Also check once per hour in background
     setInterval(()=>reg.update(), 60*60*1000);
 
-    // 3. When a new SW finishes installing, show update banner
+    // 3. When a new SW finishes installing, activate immediately — no user action
     const onNewWorker = worker => {
       worker.addEventListener('statechange',()=>{
-        if(worker.state==='installed' && navigator.serviceWorker.controller){
-          showUpdateBanner(worker);
-        }
-        // If no controller yet (first install), activate immediately — no banner needed
-        if(worker.state==='activated' && !navigator.serviceWorker.controller){
-          window.location.reload();
+        if(worker.state==='installed'){
+          worker.postMessage({type:'SKIP_WAITING'});
         }
       });
     };
 
     reg.addEventListener('updatefound',()=>onNewWorker(reg.installing));
-    if(reg.waiting) showUpdateBanner(reg.waiting); // banner if already waiting
+    if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});}
     if(reg.installing) onNewWorker(reg.installing);
 
   }).catch(()=>{});
@@ -139,32 +135,6 @@ if('serviceWorker' in navigator){
   });
 }
 
-function showUpdateBanner(worker){
-  if(document.getElementById('update-banner'))return;
-  const b=document.createElement('div');
-  b.id='update-banner';
-  b.style.cssText=[
-    'position:fixed;top:0;left:0;right:0;z-index:9999',
-    'background:var(--brand-mid,#166534);color:#fff',
-    'padding:13px 16px;display:flex;align-items:center;justify-content:space-between',
-    'font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;font-weight:500',
-    'box-shadow:0 2px 12px rgba(0,0,0,0.25)',
-  ].join(';');
-  b.innerHTML=`
-    <span style="display:flex;align-items:center;gap:8px">
-      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
-      Update ready
-    </span>
-    <button id="update-now-btn" style="background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 16px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;color:#fff">
-      Restart
-    </button>`;
-  document.body.prepend(b);
-  window._swWorker=worker;
-  document.getElementById('update-now-btn').addEventListener('click',()=>{
-    document.getElementById('update-now-btn').textContent='…';
-    worker.postMessage({type:'SKIP_WAITING'});
-  });
-}
 </script>
 </body>
 </html>
