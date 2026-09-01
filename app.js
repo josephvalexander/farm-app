@@ -329,83 +329,69 @@ async function writeNamedFile(id,name,content){
   return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
 }
 
+// In-memory sync lock — prevents any concurrent syncs within the same session
+let _syncInFlight=false;
+let _lastSyncAttempt=0;
+
 async function triggerSync(manual=false){
-  if(S.syncing)return;
-  // Prevent rapid successive syncs — minimum 30s between auto-syncs
-  if(!manual){
-    const sinceLastSync=Date.now()-(cfg.lastSyncTs||0);
-    if(sinceLastSync<30000)return;
-  }
+  // Hard lock — only one sync at a time, ever
+  if(_syncInFlight){console.log('[Sync] Blocked — sync already in flight');return;}
+  // Rate limit — no auto-sync within 60s of last attempt
+  if(!manual&&Date.now()-_lastSyncAttempt<60000){console.log('[Sync] Blocked — too soon');return;}
   if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
-  // On auto-sync with no cached token: skip silently — avoid iOS PWA auth popup hang
   if(!manual&&!S.oauthToken&&!loadCachedToken()){return;}
+  _syncInFlight=true;
+  _lastSyncAttempt=Date.now();
   S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
-  // Safety net: if sync never resolves, reset after 20s to prevent permanent stuck state
   const syncTimeout=setTimeout(()=>{
-    if(S.syncing){S.syncing=false;setSyncUI('err','Timed out — tap Sync to retry');setTimeout(()=>setSyncUI('idle','Sync'),4000);}
+    if(S.syncing){_syncInFlight=false;S.syncing=false;setSyncUI('err','Timed out — tap Sync to retry');setTimeout(()=>setSyncUI('idle','Sync'),4000);}
   },35000);
   try{
     await getOAuthToken();
-    // Try cached file ID first (avoids search + prevents duplicate creation race)
+
+    // ── FIND FILE ─────────────────────────────────────────────────────────────
+    // Strategy: cached ID → search → create (never run more than one create)
     let file=null;
+
+    // 1. Use cached file ID if we have one
     if(cfg.driveFileId){
-      // Verify cached ID still exists
       try{
-        const check=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id`);
-        if(check.ok){
-          const idJson=await check.json().catch(()=>null);
-          if(idJson?.id)file={id:cfg.driveFileId};
+        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed`);
+        if(chk.ok){
+          const j=await chk.json().catch(()=>null);
+          if(j?.id&&!j.trashed)file={id:cfg.driveFileId};
           else{cfg.driveFileId=null;saveCfg();}
-        } else {cfg.driveFileId=null;saveCfg();}
+        }else{cfg.driveFileId=null;saveCfg();}
       }catch(e){cfg.driveFileId=null;saveCfg();}
     }
-    if(!file)file=await findFile();
-    if(!file){
-      // Use a Drive lock file to prevent simultaneous creation by multiple devices.
-      // Only the device that successfully creates the lock file proceeds to create data file.
-      const LOCK_FILE='vplantations_lock.tmp';
-      let gotLock=false;
-      try{
-        // Attempt to create lock file — fails if another device already created it
-        const lockCheck=await findNamedFile(LOCK_FILE);
-        if(!lockCheck){
-          await writeNamedFile(null,LOCK_FILE,cfg.deviceId||'lock');
-          gotLock=true;
-        }
-      }catch(e){gotLock=false;}
 
-      if(gotLock){
-        // We hold the lock — wait 1s for any concurrent creators to see our lock, then create
-        await new Promise(r=>setTimeout(r,1000));
-        // Final check — another device may have created between our lock and now
-        const finalCheck=await findFile();
-        if(finalCheck){
-          file=finalCheck;
-          cfg.driveFileId=file.id;saveCfg();
-        } else {
-          const pp=normPP(cfg.passphrase);
-          const enc=await encrypt(db,pp);
-          const res=await writeFile(null,enc);
-          cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
-          setSyncUI('ok','Synced ✓');
-          syncGeminiKey();
-          syncInsights();
-        }
-        // Release lock — delete the lock file
-        try{
-          const lf=await findNamedFile(LOCK_FILE);
-          if(lf)await driveFetch(`drive/v3/files/${lf.id}`,{method:'DELETE'});
-        }catch(e){}
-      } else {
-        // Another device holds the lock — wait 3s and retry by re-syncing
-        await new Promise(r=>setTimeout(r,3000));
-        file=await findFile();
-        if(file){cfg.driveFileId=file.id;saveCfg();}
-      }
+    // 2. Search Drive if no cached ID
+    if(!file){
+      file=await findFile();
+      if(file){cfg.driveFileId=file.id;saveCfg();}
     }
-    if(file&&!cfg.driveFileId){cfg.driveFileId=file.id;saveCfg();}
+
+    // 3. Create only if truly not found — and only once per session
+    if(!file){
+      console.log('[Sync] No file found — creating new one');
+      const pp=normPP(cfg.passphrase);
+      const enc=await encrypt(db,pp);
+      const res=await writeFile(null,enc);
+      if(!res?.id)throw new Error('File creation failed — no ID returned');
+      cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
+      setSyncUI('ok','Synced ✓');
+      clearTimeout(syncTimeout);
+      _syncInFlight=false;
+      S.syncing=false;
+      setTimeout(()=>setSyncUI('idle','Sync'),2000);
+      syncGeminiKey();
+      syncInsights();
+      // Auto-cleanup duplicates after creation
+      setTimeout(()=>cleanupDrive().catch(()=>{}),5000);
+      return;
+    }
     if(file){
       const raw=await readFile(file.id);
       let cloud;
@@ -448,7 +434,7 @@ async function triggerSync(manual=false){
     syncInsights();
     // Periodically auto-clean Drive duplicates — run roughly once per day
     const lastClean=parseInt(localStorage.getItem('vp_last_clean')||'0');
-    if(Date.now()-lastClean>24*60*60*1000){
+    if(Date.now()-lastClean>6*60*60*1000){ // every 6h instead of 24h
       cleanupDrive().then(n=>{
         if(n>0)console.log(`[Drive] Auto-cleaned ${n} duplicates`);
         localStorage.setItem('vp_last_clean',Date.now().toString());
@@ -462,12 +448,14 @@ async function triggerSync(manual=false){
     } else if(msg.toLowerCase().includes('network')||msg.toLowerCase().includes('fetch')){
       setSyncUI('err','Network error — retry');
     } else {
-      setSyncUI('err','Failed — retry');
+      setSyncUI('err','Sync failed — retry');
     }
+  } finally {
+    clearTimeout(syncTimeout);
+    _syncInFlight=false;
+    S.syncing=false;
+    setTimeout(()=>setSyncUI('idle','Sync'),3000);
   }
-  clearTimeout(syncTimeout);
-  S.syncing=false;
-  setTimeout(()=>setSyncUI('idle','Sync'),4000);
 }
 
 function mergeDb(local,cloud){
