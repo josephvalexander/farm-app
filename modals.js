@@ -21,18 +21,22 @@ function confirmDel(type,id,label){
 function doDel(type,id){deleteItem(type,id);closeModal();render();}
 
 // SECTION
+const PLANT_TYPES=['Njallani','Sundari','Kumily','Other'];
 function showEditSection(id){
   const s=id?db.sections.find(x=>x.id===id):null;
+  const ptOpts=PLANT_TYPES.map(t=>`<option value="${t}" ${(s?.plantType||'Njallani')===t?'selected':''}>${t}</option>`).join('');
   modal(`
-<div class="fg"><label class="fl">Section name</label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
+<div class="fg"><label class="fl">Section name <span style="color:var(--r-tx)">*</span></label><input id="f-sn" type="text" value="${esc(s?.name||'')}" placeholder="e.g. Block D East"/></div>
 <div class="fg"><label class="fl">Number of plants</label><input id="f-sp" type="number" value="${s?.plants||''}" placeholder="100"/></div>
+<div class="fg"><label class="fl">Plant type</label><select id="f-spt">${ptOpts}</select></div>
 <div class="fg"><label class="fl">Year planted</label><input id="f-sa" type="number" value="${s?.age||''}" placeholder="${new Date().getFullYear()}"/></div>
 <div class="fg"><label class="fl">Notes</label><input id="f-sno" type="text" value="${esc(s?.notes||'')}" placeholder="Slope, shade, irrigation…"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveSection('${id||''}')">Save</button></div>`,s?'Edit section':'Add section');
 }
 function saveSection(id){
-  const name=document.getElementById('f-sn').value.trim();if(!name)return;
-  const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim(),updatedAt:Date.now()};
+  const name=document.getElementById('f-sn').value.trim();
+  if(!name){document.getElementById('f-sn').style.borderColor='var(--r-tx)';document.getElementById('f-sn').focus();return;}
+  const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,plantType:document.getElementById('f-spt').value||'Njallani',age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.sections.findIndex(x=>x.id===id);if(i>=0)db.sections[i]={...db.sections[i],...data};}
   else db.sections.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);

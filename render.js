@@ -342,7 +342,7 @@ function renderSections(){
   <div class="row">
     <div style="flex:1;min-width:0">
       <div class="rt">${esc(s.name)}</div>
-      <div class="rs">${s.plants} plants${s.age?' · Planted '+s.age:''}${s.notes?' · '+esc(s.notes):''}</div>
+      <div class="rs">${s.plants} plants${s.plantType?' · '+s.plantType:''}${s.age?' · Planted '+s.age:''}${s.notes?' · '+esc(s.notes):''}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-left:8px;flex-shrink:0">
       <div style="text-align:right">

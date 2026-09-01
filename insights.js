@@ -245,26 +245,22 @@ async function fetchCardamomPrice(force=false){
 
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
-  const yesterdayStr=new Date(Date.now()+5.5*3600000-86400000).toISOString().slice(0,10);
-  const prompt=`Today's date is ${todayStr} (IST). Search cardamom.farm RIGHT NOW for the cardamom auction price.
+  const prompt=`Today is ${todayStr} (IST). Fetch the cardamom price shown on the HOMEPAGE of https://cardamom.farm
 
-Instructions:
-1. Open https://cardamom.farm in your search
-2. Look at the price history list or chart — find the MOST RECENT auction date entry
-3. The most recent entry should be ${todayStr} or ${yesterdayStr} — cardamom auctions happen on weekdays
-4. Read the average price (avg) and maximum price (max) for that most recent date only
-5. Do NOT return data for any date older than 7 days from today (${todayStr})
+IMPORTANT: Go to https://cardamom.farm (the main homepage, NOT /history or any subpage).
+The homepage displays a single current price prominently — the latest auction average price in ₹/kg.
+Read exactly what is shown on that homepage right now.
 
 Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
 {
-  "date": "YYYY-MM-DD of the most recent auction on cardamom.farm",
-  "avg": integer average price per kg in INR (e.g. 3072),
-  "max": integer max price per kg in INR (e.g. 4200),
+  "date": "YYYY-MM-DD of the date shown on the cardamom.farm homepage",
+  "avg": integer average price shown in INR per kg (e.g. 3072),
+  "max": integer max price shown in INR per kg if visible (else same as avg),
   "source": "cardamom.farm",
   "found": true
 }
 
-If no data found within last 7 days, return: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
+If the page is unreachable or shows no price: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
 
   try{
     const body=JSON.stringify({
