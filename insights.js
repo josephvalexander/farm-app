@@ -234,142 +234,115 @@ const PRICE_FETCH_KEY='vp_price_fetch_ts';
 const PRICE_FETCH_TTL=12*60*60*1000; // fetch at most every 12h
 
 async function fetchCardamomPrice(force=false){
-  // Rate-limit: fetch at most once per 12h unless forced
   const last=parseInt(localStorage.getItem(PRICE_FETCH_KEY)||'0');
   if(!force&&Date.now()-last<PRICE_FETCH_TTL)return;
 
   const key=await loadGeminiKey();
-  if(!key){console.log('[Price] No Gemini key — skipping auto-fetch');return;}
+  if(!key){console.log('[Price] No Gemini key');return;}
 
-  console.log('[Price] Fetching cardamom price via Gemini search grounding…');
+  console.log('[Price] Fetching via Gemini web search…');
 
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
-  const prompt=`Today is ${todayStr} (IST). Open https://cardamom.farm and read the auction data shown on that page.
 
-The homepage shows one or more auction entries, each with:
-- A date (e.g. "01-Sep-2026")
-- An average price in ₹/kg (the large number, e.g. ₹3,055)
-- A max price (e.g. "Max price ₹3,615")
-- An auctioneer name
-- Quantity sold in kg
+  // Use web_search tool — more reliable than grounding for structured data extraction
+  const prompt=`Search the web for "cardamom auction price today site:cardamom.farm" OR "cardamom.farm price ${todayStr}".
 
-There may be multiple auctions listed for the same date (different auctioneers).
+Find the latest small cardamom e-auction average price in Kerala, India from cardamom.farm.
+The site shows daily auction results with average price in ₹/kg and date.
 
-TASK:
-1. Find all auction entries for the most recent date shown on the page
-2. Calculate the weighted average price across all auctioneers for that date:
-   weighted avg = sum(avg_price × quantity) / sum(quantity)
-   If quantity is not visible, use a simple average of all avg prices
-3. Use the highest max price seen across all auctioneers as the max
-4. Report the most recent date's data only
+Return ONLY this JSON (no markdown, no explanation):
+{"date":"YYYY-MM-DD","avg":NUMBER,"max":NUMBER,"found":true}
 
-Return ONLY valid JSON — no markdown, no explanation:
-{
-  "date": "YYYY-MM-DD",
-  "avg": integer weighted average price in INR per kg,
-  "max": integer highest max price in INR per kg,
-  "source": "cardamom.farm",
-  "found": true
-}
-
-If page unreachable or no data: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
+Use found:false if no recent price found. avg and max must be plain integers like 3055.`;
 
   try{
-    const body=JSON.stringify({
+    // Try with web search tool first
+    const makeBody=(tool)=>JSON.stringify({
       contents:[{parts:[{text:prompt}]}],
-      tools:[{google_search:{}}],
-      generationConfig:{temperature:0,maxOutputTokens:256}
+      ...(tool?{tools:[{google_search:{}}]}:{}),
+      generationConfig:{temperature:0,maxOutputTokens:150}
     });
+
     let res=await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
-      {method:'POST',headers:{'Content-Type':'application/json'},body,signal:AbortSignal.timeout(20000)}
+      {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(true),signal:AbortSignal.timeout(25000)}
     );
-    // Retry without grounding if key doesn't support it
+
     if(!res.ok){
       const err=await res.json().catch(()=>({}));
       const msg=(err.error?.message||'').toLowerCase();
-      if(res.status===400&&(msg.includes('tool')||msg.includes('search')||msg.includes('grounding'))){
-        const body2=JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0,maxOutputTokens:256}});
-        res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:body2,signal:AbortSignal.timeout(20000)});
+      // Fallback without grounding
+      if(res.status===400&&(msg.includes('tool')||msg.includes('search'))){
+        res=await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${key}`,
+          {method:'POST',headers:{'Content-Type':'application/json'},body:makeBody(false),signal:AbortSignal.timeout(25000)}
+        );
       }
     }
-    if(!res.ok)throw new Error('Gemini price fetch failed: '+res.status);
+    if(!res.ok)throw new Error('API error '+res.status);
 
     const data=await res.json();
-    // Extract text from Gemini response
-    const text=data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
-    console.log('[Price] Gemini raw response:', text.slice(0,300));
 
-    // Aggressively extract JSON — handles markdown fences, extra text, etc.
+    // Handle empty content (grounding ran but returned no text)
+    const parts=data.candidates?.[0]?.content?.parts||[];
+    const text=parts.map(p=>p.text||'').join('').trim();
+
+    if(!text){
+      console.warn('[Price] Gemini returned empty response — grounding may have blocked page access');
+      localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
+      return;
+    }
+
+    console.log('[Price] Raw response:', text.slice(0,200));
+
+    // Extract JSON
     let parsed=null;
-    const clean=text.replace(/```json|```/gi,'').trim();
-
-    // Try 1: direct parse
-    try{parsed=JSON.parse(clean);}catch(e){}
-
-    // Try 2: extract first JSON object
+    try{parsed=JSON.parse(text.replace(/```json|```/gi,'').trim());}catch(e){}
+    if(!parsed){const m=text.match(/\{[^{}]+\}/);if(m)try{parsed=JSON.parse(m[0]);}catch(e){}}
     if(!parsed){
-      const m=clean.match(/\{[^{}]*"found"[^{}]*\}/s)||clean.match(/\{[\s\S]*?\}/);
-      if(m){try{parsed=JSON.parse(m[0]);}catch(e){}}
+      // Extract individual fields
+      const avgM=text.match(/"avg"\s*:\s*(\d{3,6})/)||text.match(/avg[^:]*:\s*(\d{3,6})/i);
+      const dateM=text.match(/"date"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)||text.match(/(\d{4}-\d{2}-\d{2})/);
+      const maxM=text.match(/"max"\s*:\s*(\d{3,6})/);
+      if(avgM&&dateM){parsed={found:true,date:dateM[1],avg:parseInt(avgM[1]),max:maxM?parseInt(maxM[1]):parseInt(avgM[1])};}
     }
 
-    // Try 3: manually extract key fields from text
-    if(!parsed){
-      console.warn('[Price] JSON parse failed — trying field extraction from:', clean.slice(0,200));
-      const avgM=clean.match(/"avg"\s*:\s*(\d+)/)||clean.match(/avg[^\d]*(\d{3,6})/i);
-      const dateM=clean.match(/"date"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)||clean.match(/(\d{4}-\d{2}-\d{2})/);
-      const maxM=clean.match(/"max"\s*:\s*(\d+)/);
-      if(avgM&&dateM){
-        parsed={found:true,date:dateM[1],avg:parseInt(avgM[1]),max:maxM?parseInt(maxM[1]):parseInt(avgM[1]),source:'cardamom.farm'};
-        console.log('[Price] Extracted fields manually:', parsed);
-      }
+    if(!parsed?.found||!parsed.avg||parsed.avg<500||parsed.avg>200000){
+      console.log('[Price] No valid price in response');
+      localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
+      return;
     }
 
-    if(!parsed){
-      console.warn('[Price] Could not parse — full response:', text);
-      throw new Error('Could not parse price response');
+    // Reject if older than 7 days
+    if(parsed.date){
+      const daysDiff=(Date.now()-new Date(parsed.date+'T00:00:00Z').getTime())/86400000;
+      if(daysDiff>7){console.warn('[Price] Stale date rejected:',parsed.date);localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());return;}
     }
-    console.log('[Price] Parsed:', parsed);
 
-    // Reject if date is more than 7 days old — Gemini returning stale data
-    if(parsed.found&&parsed.date){
-      const priceDate=new Date(parsed.date+'T00:00:00Z');
-      const daysDiff=(Date.now()-priceDate.getTime())/86400000;
-      if(daysDiff>7){
-        console.warn('[Price] Gemini returned stale date:',parsed.date,'— rejecting');
-        parsed.found=false;
-      }
-    }
-    if(parsed.found&&parsed.avg>500&&parsed.avg<200000&&parsed.date){
-      // Add to price history
-      const existing=db.priceHistory.findIndex(p=>p.date===parsed.date);
-      const entry={date:parsed.date,avg:parsed.avg,max:parsed.max||parsed.avg,fetchedAt:Date.now()};
-      if(existing>=0)db.priceHistory[existing]=entry;
-      else db.priceHistory.push(entry);
+    console.log('[Price] Got price:',parsed);
 
-      // Keep last 60 days
-      db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
-      if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
+    // Update history
+    const existing=db.priceHistory.findIndex(p=>p.date===parsed.date);
+    const entry={date:parsed.date,avg:parsed.avg,max:parsed.max||parsed.avg,fetchedAt:Date.now()};
+    if(existing>=0)db.priceHistory[existing]=entry;
+    else db.priceHistory.push(entry);
+    db.priceHistory.sort((a,b)=>a.date.localeCompare(b.date));
+    if(db.priceHistory.length>60)db.priceHistory=db.priceHistory.slice(-60);
 
-      // Update dried price (auction price from cardamom.farm)
-      db.priceDried=parsed.avg;
-      db.priceDate=parsed.date;
-      db.priceSource='cardamom.farm';
-      saveLocal();
-      triggerSync(false);
-      if(S.tab==='dashboard')render();
-      showToast('Price updated · ₹'+parsed.avg.toLocaleString('en-IN')+'/kg ✓');
-      console.log('[Price] Updated: ₹'+parsed.avg+'/kg on '+parsed.date);
-    } else {
-      console.log('[Price] No auction price found for today/yesterday');
-    }
+    db.priceDried=parsed.avg;
+    db.priceDate=parsed.date;
+    db.priceSource='cardamom.farm';
+    saveLocal();
+    triggerSync(false);
+    if(S.tab==='dashboard')render();
+    showToast('Price updated · ₹'+parsed.avg.toLocaleString('en-IN')+'/kg ✓');
   }catch(e){
-    console.warn('[Price] Fetch failed:',e.message);
+    console.warn('[Price] Failed:',e.message);
   }
-
   localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
 }
+
 
 // ── 5AM IST SCHEDULER ────────────────────────────────────────────────────────
 function schedulePriceFetch(){
