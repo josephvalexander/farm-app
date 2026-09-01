@@ -463,14 +463,12 @@ async function triggerSync(manual=false){
     // Load Gemini key and shared insights in background after sync
     syncGeminiKey();
     syncInsights();
-    // Periodically auto-clean Drive duplicates — run roughly once per day
-    const lastClean=parseInt(localStorage.getItem('vp_last_clean')||'0');
-    if(Date.now()-lastClean>6*60*60*1000){ // every 6h instead of 24h
+    // Always clean up duplicates after every sync — keeps Drive tidy
+    setTimeout(()=>{
       cleanupDrive().then(n=>{
-        if(n>0)console.log(`[Drive] Auto-cleaned ${n} duplicates`);
-        localStorage.setItem('vp_last_clean',Date.now().toString());
+        if(n>0){console.log(`[Drive] Cleaned ${n} duplicates`);localStorage.setItem('vp_last_clean',Date.now().toString());}
       }).catch(()=>{});
-    }
+    },3000);
   }catch(e){
     console.error('Sync error:',e);
     const msg=e.message||'';
