@@ -243,25 +243,28 @@ async function fetchCardamomPrice(force=false){
 
   console.log('[Price] Fetching cardamom price via Gemini search grounding…');
 
-  const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const prompt=`Today is ${today}. Search ONLY the website cardamom.farm for the latest cardamom auction price.
+  const todayIST=new Date(Date.now()+5.5*3600000);
+  const todayStr=todayIST.toISOString().slice(0,10);
+  const yesterdayStr=new Date(Date.now()+5.5*3600000-86400000).toISOString().slice(0,10);
+  const prompt=`Today's date is ${todayStr} (IST). Search cardamom.farm RIGHT NOW for the cardamom auction price.
 
-Go to https://cardamom.farm and find the most recent daily average auction price shown on the site.
-cardamom.farm shows daily Puttady/Bodinayakanur small cardamom e-auction data including date, average price (₹/kg), and max price (₹/kg).
-
-Do NOT use any other website. Do NOT use training data or memory.
+Instructions:
+1. Open https://cardamom.farm in your search
+2. Look at the price history list or chart — find the MOST RECENT auction date entry
+3. The most recent entry should be ${todayStr} or ${yesterdayStr} — cardamom auctions happen on weekdays
+4. Read the average price (avg) and maximum price (max) for that most recent date only
+5. Do NOT return data for any date older than 7 days from today (${todayStr})
 
 Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
 {
-  "date": "YYYY-MM-DD of the auction date shown on cardamom.farm",
-  "avg": integer average price in INR per kg (e.g. 2984),
-  "max": integer max price in INR per kg (e.g. 4100),
+  "date": "YYYY-MM-DD of the most recent auction on cardamom.farm",
+  "avg": integer average price per kg in INR (e.g. 3072),
+  "max": integer max price per kg in INR (e.g. 4200),
   "source": "cardamom.farm",
   "found": true
 }
 
-If cardamom.farm is unreachable or shows no price data, return:
-{"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
+If no data found within last 7 days, return: {"date":"","avg":0,"max":0,"source":"cardamom.farm","found":false}`;
 
   try{
     const body=JSON.stringify({
@@ -300,6 +303,15 @@ If cardamom.farm is unreachable or shows no price data, return:
 
     console.log('[Price] Gemini returned:', parsed);
 
+    // Reject if date is more than 7 days old — Gemini returning stale data
+    if(parsed.found&&parsed.date){
+      const priceDate=new Date(parsed.date+'T00:00:00Z');
+      const daysDiff=(Date.now()-priceDate.getTime())/86400000;
+      if(daysDiff>7){
+        console.warn('[Price] Gemini returned stale date:',parsed.date,'— rejecting');
+        parsed.found=false;
+      }
+    }
     if(parsed.found&&parsed.avg>500&&parsed.avg<200000&&parsed.date){
       // Add to price history
       const existing=db.priceHistory.findIndex(p=>p.date===parsed.date);
