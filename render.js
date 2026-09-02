@@ -127,7 +127,7 @@ function renderDashboard(){
   const plants=totalPlants();
   const byCat={};yrExpenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const maxE=Math.max(...Object.values(byCat),1);
-  const bClr={labor:'var(--brand-glow)',pesticide:'var(--r-tx)',rawmat:'var(--a-mid)',crop:'var(--b-tx)',other:'var(--tx3)'};
+  const bClr={labor:'#e07b00',pesticide:'#c0392b',rawmat:'#2980b9',crop:'#27ae60',other:'#95a5a6'};
   const recent=[...db.yields.map(y=>({t:'y',y,ts:y.createdAt||0})),...db.incomes.map(i=>({t:'i',i,ts:i.createdAt||0})),...db.expenses.map(e=>({t:'e',e,ts:e.createdAt||0}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
   const hasPrice=db.priceRaw||db.priceDried;
   const insightsOpen=S.insightsOpen!==false; // default open
@@ -941,11 +941,18 @@ function renderForecast(){
   const aFrom=S.analyticsFrom;
   const aTo=S.analyticsTo;
 
+  // Compute ranges at render time — avoids closure issues in onclick strings
+  const lmStart=new Date(now.getFullYear(),now.getMonth()-1,1).toISOString().slice(0,10);
+  const lmEnd=new Date(now.getFullYear(),now.getMonth(),0).toISOString().slice(0,10);
+  const lyStart=(curYear-1)+'-01-01';
+  const lyEnd=(curYear-1)+'-12-31';
+  const allDates=[...db.yields,...db.expenses,...db.incomes].map(r=>r.date).filter(Boolean).sort();
+  const atStart=allDates[0]||defaultFrom;
   const quickSets=[
-    {label:'Last month',fn:()=>{const d=new Date(now.getFullYear(),now.getMonth()-1,1);const e=new Date(now.getFullYear(),now.getMonth(),0);return[d.toISOString().slice(0,10),e.toISOString().slice(0,10)];}},
-    {label:'This year',fn:()=>[curYear+'-01-01',defaultTo]},
-    {label:'Last year',fn:()=>[(curYear-1)+'-01-01',(curYear-1)+'-12-31']},
-    {label:'All time',fn:()=>{const all=[...db.yields,...db.expenses,...db.incomes].map(r=>r.date).filter(Boolean).sort();return[all[0]||defaultFrom,defaultTo];}},
+    {label:'Last month',  from:lmStart, to:lmEnd},
+    {label:'This year',   from:defaultFrom, to:defaultTo},
+    {label:'Last year',   from:lyStart, to:lyEnd},
+    {label:'All time',    from:atStart, to:defaultTo},
   ];
 
   // ── FILTER DATA TO RANGE ──────────────────────────────────────────────────────
@@ -1049,7 +1056,7 @@ function renderForecast(){
 <!-- ── DATE RANGE PICKER ── -->
 <div class="card" style="padding:14px 16px">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    ${quickSets.map(q=>`<button onclick="const r=(${q.fn.toString()})();S.analyticsFrom=r[0];S.analyticsTo=r[1];render()" style="padding:5px 12px;font-size:11px;font-weight:600;border-radius:20px;border:1.5px solid var(--bor2);background:${(q.label==='This year'&&aFrom===curYear+'-01-01'&&aTo===defaultTo)||(q.label==='All time'&&aFrom<curYear+'-01-01')||(q.label==='Last year'&&aFrom===(curYear-1)+'-01-01'&&aTo===(curYear-1)+'-12-31')||(q.label==='Last month'&&aTo!==defaultTo&&aFrom!==curYear+'-01-01'&&aFrom!==(curYear-1)+'-01-01')?'var(--g-bg)':'none'};color:${(q.label==='This year'&&aFrom===curYear+'-01-01'&&aTo===defaultTo)||(q.label==='All time'&&aFrom<curYear+'-01-01')||(q.label==='Last year'&&aFrom===(curYear-1)+'-01-01'&&aTo===(curYear-1)+'-12-31')||(q.label==='Last month'&&aTo!==defaultTo&&aFrom!==curYear+'-01-01'&&aFrom!==(curYear-1)+'-01-01')?'var(--g-tx)':'var(--tx3)'};cursor:pointer;font-family:inherit">${q.label}</button>`).join('')}
+    ${quickSets.map(q=>{const active=aFrom===q.from&&aTo===q.to;return`<button onclick="S.analyticsFrom='${q.from}';S.analyticsTo='${q.to}';render()" style="padding:5px 12px;font-size:11px;font-weight:600;border-radius:20px;border:1.5px solid ${active?'var(--g-bor)':'var(--bor2)'};background:${active?'var(--g-bg)':'none'};color:${active?'var(--g-tx)':'var(--tx3)'};cursor:pointer;font-family:inherit">${q.label}</button>`;}).join('')}
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px">
