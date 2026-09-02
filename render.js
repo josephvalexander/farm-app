@@ -513,7 +513,6 @@ function renderRecords(){
   const tabs=[
     {id:'harvest', label:'Harvest'},
     {id:'expenses',label:'Expenses'},
-    {id:'income',  label:'Income'},
     {id:'workers', label:'Workers'},
   ];
   const subNav=`<div class="subtab-bar" style="position:sticky;top:57px;z-index:10">
@@ -521,7 +520,6 @@ function renderRecords(){
   </div>`;
   if(t==='harvest') return subNav+renderHarvestList();
   if(t==='expenses')return subNav+renderExpenses();
-  if(t==='income')  return subNav+renderIncome();
   if(t==='workers') return subNav+renderWorkersList();
   return subNav+renderYield(); // fallback
 }
@@ -543,7 +541,9 @@ function renderHarvestList(){
 <div class="card" style="padding:0;overflow:hidden">
   <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bor)">
     <div style="font-size:12px;color:var(--tx3)">Records <span>(${db.yields.length})</span></div>
-    <button onclick="showEditHarvest(null)" class="ia e">+ Add</button>
+    <button onclick="showEditHarvest(null)" style="background:var(--brand-mid);color:#fff;border:none;border-radius:var(--rp);padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>Add harvest
+    </button>
   </div>
   ${sorted.length===0?`<div class="empty">No harvest records yet<br><span style="font-size:12px">Tap + Add to record today's harvest</span></div>`:`
   ${show.map(y=>{
@@ -587,7 +587,9 @@ function renderWorkersList(){
 <div class="card" style="padding:0;overflow:hidden">
   <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bor)">
     <div style="font-size:12px;color:var(--tx3)">Records <span>(${sorted.length})</span></div>
-    <button onclick="showEditWorker(null)" class="ia e">+ Add</button>
+    <button onclick="showEditWorker(null)" style="background:var(--brand-mid);color:#fff;border:none;border-radius:var(--rp);padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>Add workers
+    </button>
   </div>
   ${sorted.length===0?`<div class="empty">No worker records yet<br><span style="font-size:12px">Tap + Add to log today's workers</span></div>`:`
   ${show.map(w=>{
@@ -1179,29 +1181,33 @@ function renderForecast(){
   <div style="font-size:11px;color:var(--tx3);margin-top:10px">Based on last 6 months of expenses and yield records.</div>
 </div>
 
-<!-- Income vs expense waterfall -->
+<!-- Income vs expense grouped bar chart -->
 <div class="card">
   <div class="ct">Income vs expenses — monthly</div>
-  ${waterfall.every(w=>w.inc===0&&w.exp===0)?'<div class="empty" style="padding:16px">No income or expense data yet</div>':
-  waterfall.map(w=>`
-  <div style="padding:8px 0;border-bottom:1px solid var(--bor)">
-    <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:12px;color:var(--tx2);font-weight:500">${w.label}</span>
-      <span style="font-size:13px;font-weight:700;color:${w.profit>=0?'var(--g-mid)':'var(--r-tx)'}">
-        ${w.profit>=0?'+':''}${fc(w.profit)}
-      </span>
-    </div>
-    ${w.inc>0?`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-      <div style="width:36px;font-size:10px;color:var(--tx3)">In</div>
-      ${bar(w.inc,maxWF,'var(--g-mid)')}
-      <div style="width:52px;text-align:right;font-size:11px;color:var(--g-mid)">${fc(w.inc)}</div>
-    </div>`:''}
-    ${w.exp>0?`<div style="display:flex;align-items:center;gap:6px">
-      <div style="width:36px;font-size:10px;color:var(--tx3)">Out</div>
-      ${bar(w.exp,maxWF,'var(--a-mid)')}
-      <div style="width:52px;text-align:right;font-size:11px;color:var(--a-mid)">${fc(w.exp)}</div>
-    </div>`:''}
-  </div>`).join('')}
+  ${waterfall.every(w=>w.inc===0&&w.exp===0)?'<div class="empty" style="padding:16px">No income or expense data yet</div>':`
+  <div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin-bottom:10px">
+    ${waterfall.map(w=>{
+      const incH=w.inc>0?Math.max(4,Math.round(w.inc/maxWF*100)):0;
+      const expH=w.exp>0?Math.max(4,Math.round(w.exp/maxWF*100)):0;
+      return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%">
+        <div style="flex:1;display:flex;align-items:flex-end;gap:2px;width:100%">
+          <div style="flex:1;background:var(--g-mid);border-radius:3px 3px 0 0;height:${incH}%" title="Income ${fc(w.inc)}"></div>
+          <div style="flex:1;background:var(--a-mid);border-radius:3px 3px 0 0;height:${expH}%" title="Expense ${fc(w.exp)}"></div>
+        </div>
+        <div style="font-size:9px;color:var(--tx3);text-align:center;white-space:nowrap">${w.label}</div>
+      </div>`;
+    }).join('')}
+  </div>
+  <div style="display:flex;gap:16px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:var(--g-mid)"></div><span style="font-size:11px;color:var(--tx3)">Income</span></div>
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:var(--a-mid)"></div><span style="font-size:11px;color:var(--tx3)">Expenses</span></div>
+  </div>
+  <div style="border-top:1px solid var(--bor);padding-top:8px">
+    ${waterfall.map(w=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">
+      <span style="color:var(--tx2)">${w.label}</span>
+      <span style="color:${w.profit>=0?'var(--g-mid)':'var(--r-tx)'};font-weight:600">${w.profit>=0?'+':''}${fc(w.profit)}</span>
+    </div>`).join('')}
+  </div>`}
 </div>
 
 <!-- ════ LABOUR & OPERATIONS ════ -->

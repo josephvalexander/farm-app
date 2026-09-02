@@ -64,10 +64,10 @@ function showEditHarvest(id){
 <div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-hd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section</label><select id="f-hs">${secOpts('Entire farm')}</select></div>
 <div class="fg"><label class="fl">Quantity harvested (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-hq" type="number" step="0.1" value="${y?.qty||''}" placeholder="50"/></div>
-<div class="fg"><label class="fl">Labourers picking</label><input id="f-hl" type="number" step="0.5" value="${y?.labourers||''}" placeholder="e.g. 5"/></div>
+<div class="fg"><label class="fl">Total pickers <span style="color:var(--r-tx)">*</span></label><input id="f-hl" type="number" step="0.5" value="${y?.labourers||''}" placeholder="e.g. 5"/></div>
 <div style="background:var(--sur2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;border:1px solid var(--bor)">
   <div style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Sale details</div>
-  <div class="fg"><label class="fl">Price per kg (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-hp" type="number" step="0.5" value="${pairedIncome?.pricePerKg||defaultPrice}" placeholder="Enter price"/></div>
+  <div class="fg"><label class="fl">Price per kg (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-hp" type="number" step="0.5" value="${pairedIncome?.pricePerKg||''}" placeholder="Enter sale price"/></div>
   <div class="fg"><label class="fl">Buyer <span style="color:var(--r-tx)">*</span></label>
     <select id="f-hb" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();triggerSync(false);this.outerHTML='<select id=\'f-hb\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
       ${buyerOpts(pairedIncome?.buyer||'')}
@@ -80,13 +80,14 @@ function showEditHarvest(id){
 }
 function saveHarvest(yieldId){
   const qtyEl=document.getElementById('f-hq'),priceEl=document.getElementById('f-hp'),buyerEl=document.getElementById('f-hb');
-  const qty=parseFloat(qtyEl.value),pricePerKg=parseFloat(priceEl.value);
+  const labEl=document.getElementById('f-hl');
+  const qty=parseFloat(qtyEl.value),pricePerKg=parseFloat(priceEl.value),labourers=parseFloat(labEl.value);
   if(!qty){qtyEl.style.borderColor='var(--r-tx)';qtyEl.focus();return;}
+  if(!labourers){labEl.style.borderColor='var(--r-tx)';labEl.focus();return;}
   if(!pricePerKg){priceEl.style.borderColor='var(--r-tx)';priceEl.focus();return;}
   if(buyerEl&&!buyerEl.value){buyerEl.style.borderColor='var(--r-tx)';buyerEl.focus();return;}
   const date=document.getElementById('f-hd').value;
   const sectionId=document.getElementById('f-hs').value||null;
-  const labourers=parseFloat(document.getElementById('f-hl').value)||null;
   const buyer=buyerEl.value.trim();
   const notes=document.getElementById('f-hn').value.trim();
   // Save yield record
