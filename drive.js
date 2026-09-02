@@ -119,7 +119,6 @@ async function findNamedFile(name){
   if(files.length>1){
     const toDelete=files.slice(1);
     toDelete.forEach(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{}));
-    console.log(`[Drive] Cleaned up ${toDelete.length} duplicate(s) of "${name}"`);
   }
   return files[0]||null;
 }
@@ -189,9 +188,9 @@ let _lastSyncAttempt=0;
 
 async function triggerSync(manual=false){
   // Hard lock — only one sync at a time, ever
-  if(_syncInFlight){console.log('[Sync] Blocked — sync already in flight');return;}
+  if(_syncInFlight){return;}
   // Rate limit — no auto-sync within 60s of last attempt
-  if(!manual&&Date.now()-_lastSyncAttempt<60000){console.log('[Sync] Blocked — too soon');return;}
+  if(!manual&&Date.now()-_lastSyncAttempt<60000){return;}
   if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
@@ -230,7 +229,6 @@ async function triggerSync(manual=false){
       const creationStart=parseInt(localStorage.getItem(CREATION_LOCK_KEY)||'0');
       if(creationStart&&Date.now()-creationStart<15000){
         // Another invocation on this device is currently creating — wait and retry
-        console.log('[Sync] Creation in progress — waiting 5s');
         await new Promise(r=>setTimeout(r,5000));
       }
       file=await findFile();
@@ -243,7 +241,6 @@ async function triggerSync(manual=false){
       if(lockTs&&Date.now()-lockTs<15000){
         // Lock is fresh — another sync on this device just started creating
         // Wait for it and retry finding
-        console.log('[Sync] Creation lock active — waiting');
         await new Promise(r=>setTimeout(r,6000));
         file=await findFile();
         if(file){cfg.driveFileId=file.id;saveCfg();}
@@ -253,7 +250,6 @@ async function triggerSync(manual=false){
         // Set creation lock before any async work
         localStorage.setItem(CREATION_LOCK_KEY,Date.now().toString());
         try{
-          console.log('[Sync] Creating new file');
           const pp=normPP(cfg.passphrase);
           const enc=await encrypt(db,pp);
           const res=await writeFile(null,enc);
@@ -282,17 +278,13 @@ async function triggerSync(manual=false){
       let cloud;
       try{
         // Diagnostic: log file stats to help debug decrypt failures
-        console.log('[Sync] Drive file length:',raw.length,'chars, first 20:',raw.slice(0,20));
         const isValidB64=/^[A-Za-z0-9+/=\s]+$/.test(raw.trim());
-        console.log('[Sync] Looks like valid base64:',isValidB64);
-        console.log('[Sync] Passphrase length:',cfg.passphrase?.length,'repr:',JSON.stringify(cfg.passphrase));
         cloud=await decryptWithVariants(raw,normPP(cfg.passphrase));
       }catch(e){
         console.error('[Sync] Decrypt failed:',e.message);
         // Check if the file content looks like JSON (not encrypted) — old unencrypted data
         const trimmed=raw.trim();
         if(trimmed.startsWith('{')||trimmed.startsWith('[')){
-          console.log('[Sync] File appears to be unencrypted JSON — loading directly');
           try{
             cloud=JSON.parse(trimmed);
             showToast('Migrated unencrypted data — re-encrypting now');
@@ -320,7 +312,7 @@ async function triggerSync(manual=false){
     // Always clean up duplicates after every sync — keeps Drive tidy
     setTimeout(()=>{
       cleanupDrive().then(n=>{
-        if(n>0){console.log(`[Drive] Cleaned ${n} duplicates`);localStorage.setItem('vp_last_clean',Date.now().toString());}
+        if(n>0){localStorage.setItem('vp_last_clean',Date.now().toString());}
       }).catch(()=>{});
     },3000);
   }catch(e){

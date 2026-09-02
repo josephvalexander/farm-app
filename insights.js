@@ -238,9 +238,7 @@ async function fetchCardamomPrice(force=false){
   if(!force&&Date.now()-last<PRICE_FETCH_TTL)return;
 
   const key=await loadGeminiKey();
-  if(!key){console.log('[Price] No Gemini key');return;}
-
-  console.log('[Price] Fetching via Gemini web search…');
+  if(!key){return;}
 
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
@@ -294,8 +292,6 @@ Use found:false if no recent price found. avg and max must be plain integers lik
       return;
     }
 
-    console.log('[Price] Raw response:', text.slice(0,200));
-
     // Extract JSON
     let parsed=null;
     try{parsed=JSON.parse(text.replace(/```json|```/gi,'').trim());}catch(e){}
@@ -309,7 +305,6 @@ Use found:false if no recent price found. avg and max must be plain integers lik
     }
 
     if(!parsed?.found||!parsed.avg||parsed.avg<500||parsed.avg>200000){
-      console.log('[Price] No valid price in response');
       localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
       return;
     }
@@ -319,8 +314,6 @@ Use found:false if no recent price found. avg and max must be plain integers lik
       const daysDiff=(Date.now()-new Date(parsed.date+'T00:00:00Z').getTime())/86400000;
       if(daysDiff>7){console.warn('[Price] Stale date rejected:',parsed.date);localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());return;}
     }
-
-    console.log('[Price] Got price:',parsed);
 
     // Update history
     const existing=db.priceHistory.findIndex(p=>p.date===parsed.date);

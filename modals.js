@@ -348,209 +348,46 @@ function saveClientId(){const v=document.getElementById('cid-in').value.trim();i
 function renderSettings(){
   const lastSync=cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'Never';
   const counts=`${db.sections.length} sections · ${db.yields.length} yield · ${db.expenses.length} expenses · ${db.incomes.length} income`;
-  return`
-<div class="settings-group">
-  <div class="settings-group-title">Sync &amp; account</div>
-  <div class="settings-row">
-    <div>
-      <div class="settings-row-label">Google account</div>
-      <div class="settings-row-sub">${cfg.googleAccountHint||'Not signed in'}</div>
-    </div>
-    ${cfg.googleAccountHint?`<button onclick="disconnectGoogle();render()" style="font-size:12px;color:var(--r-tx);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Switch</button>`:''}
+  const r=currentWorkerRate();
+  const wRateHistory=(db.workerRates||[]).slice().sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
+  const cGroup=(id,title,content,defaultOpen=true)=>`
+<div class="settings-group${id==='danger'?' settings-danger':''}">
+  <div class="settings-group-title" onclick="const d=this.nextElementSibling;const c=this.querySelector('.sg-chevron');d.style.display=d.style.display==='none'?'block':'none';c.style.transform=d.style.display==='none'?'rotate(0)':'rotate(180deg)'" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+    ${title}
+    <svg class="sg-chevron" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="flex-shrink:0;transform:rotate(${defaultOpen?180:0}deg);transition:transform 0.2s"><path d="M5 8l5 5 5-5"/></svg>
   </div>
-  <div class="settings-row">
-    <div>
-      <div class="settings-row-label">Shared folder</div>
-      <div class="settings-row-sub">${cfg.sharedFolderId?'Connected ✓':'Not set'}</div>
-    </div>
-    <button onclick="showSharedFolderSetup()" class="ia e">${cfg.sharedFolderId?'Change':'Set up'}</button>
-  </div>
-  <div class="settings-row">
-    <div>
-      <div class="settings-row-label">Passphrase</div>
-      <div class="settings-row-sub" id="pp-display">${cfg.passphrase?'Set ✓ — tap to reveal':'Not set'}</div>
-    </div>
-    <div style="display:flex;gap:6px;align-items:center">
-      ${cfg.passphrase?`<button onclick="const el=document.getElementById('pp-display');el.textContent=el.textContent.startsWith('Set')?'${cfg.passphrase.replace(/'/g,"\'")}':'Set ✓ — tap to reveal'" style="font-size:11px;color:var(--b-tx);background:var(--b-bg);border:1px solid var(--b-bor);border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit">Reveal</button>`:''}
-      <button onclick="showChangePassphrase()" class="ia e">Change</button>
-    </div>
-  </div>
-  <div class="settings-row">
-    <div>
-      <div class="settings-row-label">Google Client ID</div>
-      <div class="settings-row-sub">${cfg.clientId?cfg.clientId.slice(0,28)+'…':'Not set'}</div>
-    </div>
-    <button onclick="showClientIdSetup()" class="ia e">Change</button>
-  </div>
-  <div class="settings-row" style="border-bottom:none">
-    <div>
-      <div class="settings-row-label">Last synced</div>
-      <div class="settings-row-sub">${lastSync}</div>
-    </div>
-    <div style="display:flex;gap:5px">
-      <button onclick="manualBackup()" class="ia e">Snapshot</button>
-      <button onclick="showBackups()" class="ia e">Restore</button>
-    </div>
-  </div>
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">Buyers list</div>
-  <div style="padding:12px 16px">
-    <p style="font-size:12px;color:var(--tx3);margin-bottom:10px">Buyers appear as a dropdown when adding a sale. Shared across all devices via Drive.</p>
-    ${(db.buyers||[]).length===0?'<p style="font-size:13px;color:var(--tx3);margin-bottom:10px">No buyers added yet.</p>':''}
-    ${(db.buyers||[]).map((b,i)=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bor)">
-      <span style="font-size:13px;color:var(--tx)">${esc(b)}</span>
-      <button onclick="db.buyers.splice(${i},1);saveLocal();triggerSync(false);render()" style="font-size:11px;color:var(--r-tx);background:var(--r-bg);border:1px solid var(--r-bor);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Remove</button>
-    </div>`).join('')}
-    <button onclick="const n=prompt('Buyer name:');if(n&&n.trim()&&!db.buyers.includes(n.trim())){db.buyers.push(n.trim());saveLocal();triggerSync(false);render();}" style="width:100%;margin-top:10px;padding:10px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">+ Add buyer</button>
-  </div>
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">AI features</div>
-  <div class="settings-row" style="border-bottom:none">
-    <div>
-      <div class="settings-row-label">Gemini API key</div>
-      <div class="settings-row-sub">${S.geminiKey?S.geminiKey.slice(0,8)+'… (stored in Drive)':'Not set — needed for insights'}</div>
-    </div>
-    <button onclick="showGeminiKeySetup()" class="ia e">${S.geminiKey?'Change':'Set up'}</button>
-  </div>
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">Display</div>
-  <div class="settings-row" style="border-bottom:none">
-    <div class="settings-row-label" id="theme-setting-label">Theme</div>
-    <div style="display:flex;gap:5px">
-      <button onclick="setThemePref('light')" id="tbtn-light" class="ia">☀️</button>
-      <button onclick="setThemePref('system')" id="tbtn-system" class="ia">Auto</button>
-      <button onclick="setThemePref('dark')" id="tbtn-dark" class="ia">🌙</button>
-    </div>
-  </div>
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">Add to home screen</div>
-  <div style="padding:12px 16px">
-    <div id="a2hs-content">
-      <div style="background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--b-tx);margin-bottom:6px">iPhone / iPad (Safari)</div>
-        <ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Safari → tap Share</li><li>Tap "Add to Home Screen" → Add</li></ol>
-      </div>
-      <div style="background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:600;color:var(--brand-lite);margin-bottom:6px">Android (Chrome)</div>
-        <ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Chrome → tap ⋮ menu</li><li>Tap "Add to Home screen" → Add</li></ol>
-      </div>
-      <div id="a2hs-btn-wrap" style="display:none">
-        <button id="a2hs-btn" onclick="triggerA2HS()" style="width:100%;padding:11px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">＋ Add to home screen</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">Worker rates</div>
-  ${(()=>{
-    const r=currentWorkerRate();
-    const history=(db.workerRates||[]).slice().sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
-    return`
-  <div style="padding:12px 16px;border-bottom:1px solid var(--bor)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div>
-        <div style="font-size:13px;font-weight:500;color:var(--tx)">Current rates</div>
-        <div style="font-size:11px;color:var(--tx3)">${r.effectiveFrom?'From '+r.effectiveFrom:'Not set'}</div>
-      </div>
-      <button onclick="showEditWorkerRate()" class="ia e">Update rates</button>
-    </div>
-    ${r.male||r.female||r.bengali?`
-    <div style="display:flex;gap:16px">
-      <div><div style="font-size:10px;color:var(--tx3)">Male</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.male}</div></div>
-      <div><div style="font-size:10px;color:var(--tx3)">Female</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.female}</div></div>
-      <div><div style="font-size:10px;color:var(--tx3)">Bengali</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.bengali}</div></div>
-    </div>`:'<p style="font-size:12px;color:var(--a-mid)">No rates set — tap Update rates to add</p>'}
-  </div>
-  ${history.length>1?`
-  <div style="padding:10px 16px">
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Rate history</div>
-    ${history.map(h=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bor);font-size:12px"><span style="color:var(--tx2)">${h.effectiveFrom}</span><span style="color:var(--tx3)">M ₹${h.male} · F ₹${h.female} · B ₹${h.bengali}</span></div>`).join('')}
-  </div>`:''}`;
-  })()}
-</div>
-
-<div class="settings-group">
-  <div class="settings-group-title">Data</div>
-  <div style="padding:12px 16px">
-    <p style="font-size:12px;color:var(--tx3);margin-bottom:10px">${counts}</p>
-    <div style="display:flex;gap:8px">
-      <button onclick="exportJSON()" style="flex:1;padding:10px;background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--b-tx);cursor:pointer;font-family:inherit">Export JSON</button>
-      <button onclick="document.getElementById('import-file').click()" style="flex:1;padding:10px;background:var(--a-bg);border:1px solid var(--a-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--a-mid);cursor:pointer;font-family:inherit">Import JSON</button>
-    </div>
-    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)"/>
-  </div>
-</div>
-
-<div class="settings-group settings-danger">
-  <div class="settings-group-title">Danger zone</div>
-  <div class="settings-row" onclick="confirmClearLocal()" style="cursor:pointer">
-    <div><div class="settings-row-label">Clear local data</div><div class="settings-row-sub">Keeps Drive — re-sync to restore</div></div>
-    <span style="color:var(--r-tx);font-size:20px">›</span>
-  </div>
-  <div class="settings-row" onclick="confirmResetDrive()" style="cursor:pointer">
-    <div><div class="settings-row-label">Reset Drive sync file</div><div class="settings-row-sub">Fix persistent wrong passphrase errors</div></div>
-    <span style="color:var(--r-tx);font-size:20px">›</span>
-  </div>
-  <div class="settings-row" onclick="runDriveCleanup()" style="cursor:pointer;border-bottom:none">
-    <div><div class="settings-row-label">Clean up Drive duplicates</div><div class="settings-row-sub">Remove extra copies of sync files</div></div>
-    <span style="color:var(--r-tx);font-size:20px">›</span>
-  </div>
+  <div style="display:${defaultOpen?'block':'none'}">${content}</div>
 </div>`;
-}
-// DRIVE CLEANUP — removes duplicate files, keeps only the most recent of each
-async function runDriveCleanup(){
-  setSyncUI('syncing','Cleaning…');
-  try{
-    await getOAuthToken();
-    const cleaned=await cleanupDrive();
-    showToast(cleaned>0?`Cleaned up ${cleaned} duplicate file${cleaned>1?'s':''} ✓`:'No duplicates found — Drive is clean ✓');
-  }catch(e){
-    console.error('Cleanup failed:',e);
-    showToast('Cleanup failed: '+e.message);
-  }
-  setSyncUI('idle','Sync');
-}
-
-// RESET DRIVE FILE — deletes the corrupted Drive file so next sync creates a fresh one
-async function resetDriveFile(){
-  closeModal();
-  setSyncUI('syncing','Resetting…');
-  try{
-    await getOAuthToken();
-    const file=await findFile();
-    if(file){
-      await driveFetch(`drive/v3/files/${file.id}`,{method:'DELETE'});
-      showToast('Drive file deleted — tap Sync to create a fresh one');
-    } else {
-      showToast('No Drive file found — tap Sync to create one');
-    }
-    // Also clear local driveFileId so we don't try to update the deleted file
-    cfg.driveFileId=null;saveCfg();
-  }catch(e){
-    console.error('Reset failed:',e);
-    showToast('Reset failed: '+e.message);
-  }
-  setSyncUI('idle','Sync');
-}
-
-function confirmResetDrive(){
-  modal(`
-<div class="sbox" style="border-color:var(--r-bor);background:var(--r-bg)">
-  <p style="color:var(--r-tx);font-weight:700;margin-bottom:6px">⚠️ Delete Drive file?</p>
-  <p style="font-size:13px;color:var(--tx2);line-height:1.5">This deletes the encrypted file from Google Drive. Your local data on this device is kept. After deleting, tap Sync to upload a fresh copy — all devices will then be able to sync again.</p>
-  <p style="font-size:12px;color:var(--tx3);margin-top:8px">Use this if you are getting a "Wrong passphrase" error that won't go away.</p>
-</div>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnd" onclick="resetDriveFile()">Delete &amp; reset</button></div>`,'Reset Drive sync');
+  const syncContent=`
+  <div class="settings-row"><div><div class="settings-row-label">Google account</div><div class="settings-row-sub">${cfg.googleAccountHint||'Not signed in'}</div></div>${cfg.googleAccountHint?`<button onclick="disconnectGoogle();render()" style="font-size:12px;color:var(--r-tx);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Switch</button>`:''}</div>
+  <div class="settings-row"><div><div class="settings-row-label">Shared folder</div><div class="settings-row-sub">${cfg.sharedFolderId?'Connected ✓':'Not set'}</div></div><button onclick="showSharedFolderSetup()" class="ia e">${cfg.sharedFolderId?'Change':'Set up'}</button></div>
+  <div class="settings-row"><div><div class="settings-row-label">Passphrase</div><div class="settings-row-sub" id="pp-display">${cfg.passphrase?'Set ✓ — tap to reveal':'Not set'}</div></div><div style="display:flex;gap:6px;align-items:center">${cfg.passphrase?`<button onclick="const el=document.getElementById('pp-display');el.textContent=el.textContent.startsWith('Set')?'${cfg.passphrase.replace(/'/g,"\'")}':'Set ✓ — tap to reveal'" style="font-size:11px;color:var(--b-tx);background:var(--b-bg);border:1px solid var(--b-bor);border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit">Reveal</button>`:''}<button onclick="showChangePassphrase()" class="ia e">Change</button></div></div>
+  <div class="settings-row"><div><div class="settings-row-label">Google Client ID</div><div class="settings-row-sub">${cfg.clientId?cfg.clientId.slice(0,28)+'…':'Not set'}</div></div><button onclick="showClientIdSetup()" class="ia e">Change</button></div>
+  <div class="settings-row" style="border-bottom:none"><div><div class="settings-row-label">Last synced</div><div class="settings-row-sub">${lastSync}</div></div><div style="display:flex;gap:5px"><button onclick="manualBackup()" class="ia e">Snapshot</button><button onclick="showBackups()" class="ia e">Restore</button></div></div>`;
+  const aiContent=`<div class="settings-row" style="border-bottom:none"><div><div class="settings-row-label">Gemini API key</div><div class="settings-row-sub">${S.geminiKey?S.geminiKey.slice(0,8)+'… (stored in Drive)':'Not set — needed for insights'}</div></div><button onclick="showGeminiKeySetup()" class="ia e">${S.geminiKey?'Change':'Set up'}</button></div>`;
+  const wrContent=`
+  <div style="padding:12px 16px;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div><div style="font-size:13px;font-weight:500;color:var(--tx)">Current rates</div><div style="font-size:11px;color:var(--tx3)">${r.effectiveFrom?'From '+r.effectiveFrom:'Not set'}</div></div><button onclick="showEditWorkerRate()" class="ia e">Update rates</button></div>
+    ${r.male||r.female||r.bengali?`<div style="display:flex;gap:16px"><div><div style="font-size:10px;color:var(--tx3)">Male</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.male}</div></div><div><div style="font-size:10px;color:var(--tx3)">Female</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.female}</div></div><div><div style="font-size:10px;color:var(--tx3)">Bengali</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.bengali}</div></div></div>`:'<p style="font-size:12px;color:var(--a-mid)">No rates set</p>'}
+  </div>
+  ${wRateHistory.length>1?`<div style="padding:10px 16px">${wRateHistory.map(h=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bor);font-size:12px"><span style="color:var(--tx2)">${h.effectiveFrom}</span><span style="color:var(--tx3)">M ₹${h.male} · F ₹${h.female} · B ₹${h.bengali}</span></div>`).join('')}</div>`:''}`;
+  const buyersContent=`<div style="padding:12px 16px"><p style="font-size:12px;color:var(--tx3);margin-bottom:10px">Buyers appear as a dropdown when adding a sale. Shared across all devices.</p>${(db.buyers||[]).map((b,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bor)"><span style="font-size:13px;color:var(--tx)">${esc(b)}</span><button onclick="db.buyers.splice(${i},1);saveLocal();triggerSync(false);render()" style="font-size:11px;color:var(--r-tx);background:var(--r-bg);border:1px solid var(--r-bor);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Remove</button></div>`).join('')}<button onclick="const n=prompt('Buyer name:');if(n&&n.trim()&&!db.buyers.includes(n.trim())){db.buyers.push(n.trim());saveLocal();triggerSync(false);render();}" style="width:100%;margin-top:10px;padding:10px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">+ Add buyer</button></div>`;
+  const displayContent=`<div class="settings-row" style="border-bottom:none"><div class="settings-row-label" id="theme-setting-label">Theme</div><div style="display:flex;gap:5px"><button onclick="setThemePref('light')" id="tbtn-light" class="ia">☀️</button><button onclick="setThemePref('system')" id="tbtn-system" class="ia">Auto</button><button onclick="setThemePref('dark')" id="tbtn-dark" class="ia">🌙</button></div></div>`;
+  const a2hsContent=`<div style="padding:12px 16px"><div id="a2hs-content"><div style="background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--b-tx);margin-bottom:6px">iPhone / iPad (Safari)</div><ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Safari → tap Share</li><li>Tap "Add to Home Screen" → Add</li></ol></div><div style="background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--brand-lite);margin-bottom:6px">Android (Chrome)</div><ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Chrome → tap ⋮ menu</li><li>Tap "Add to Home screen" → Add</li></ol></div><div id="a2hs-btn-wrap" style="display:none"><button id="a2hs-btn" onclick="triggerA2HS()" style="width:100%;padding:11px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">＋ Add to home screen</button></div></div></div>`;
+  const dataContent=`<div style="padding:12px 16px"><p style="font-size:12px;color:var(--tx3);margin-bottom:10px">${counts}</p><div style="display:flex;gap:8px"><button onclick="exportJSON()" style="flex:1;padding:10px;background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--b-tx);cursor:pointer;font-family:inherit">Export JSON</button><button onclick="document.getElementById('import-file').click()" style="flex:1;padding:10px;background:var(--a-bg);border:1px solid var(--a-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--a-mid);cursor:pointer;font-family:inherit">Import JSON</button></div><input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)"/></div>`;
+  const dangerContent=`
+  <div class="settings-row" onclick="confirmClearLocal()" style="cursor:pointer"><div><div class="settings-row-label">Clear local data</div><div class="settings-row-sub">Keeps Drive — re-sync to restore</div></div><span style="color:var(--r-tx);font-size:20px">›</span></div>
+  <div class="settings-row" onclick="confirmResetDrive()" style="cursor:pointer"><div><div class="settings-row-label">Reset Drive sync file</div><div class="settings-row-sub">Fix persistent wrong passphrase errors</div></div><span style="color:var(--r-tx);font-size:20px">›</span></div>
+  <div class="settings-row" onclick="runDriveCleanup()" style="cursor:pointer;border-bottom:none"><div><div class="settings-row-label">Clean up Drive duplicates</div><div class="settings-row-sub">Remove extra copies of sync files</div></div><span style="color:var(--r-tx);font-size:20px">›</span></div>`;
+  return`
+${cGroup('sync','Sync &amp; account',syncContent,true)}
+${cGroup('ai','AI features',aiContent,true)}
+${cGroup('wr','Worker rates',wrContent,true)}
+${cGroup('buyers','Buyers list',buyersContent,false)}
+${cGroup('display','Display',displayContent,true)}
+${cGroup('a2hs','Add to home screen',a2hsContent,false)}
+${cGroup('data','Data',dataContent,false)}
+${cGroup('danger','Danger zone',dangerContent,false)}`;
 }
 
 // EXPORT JSON
@@ -757,7 +594,12 @@ function toggleFab(){
   if(open){closeFab();}
   else{items.classList.remove('hidden');btn.classList.add('open');}
 }
+function _fabOutsideClick(e){
+  const fab=document.getElementById('quick-fab');
+  if(fab&&!fab.contains(e.target)){closeFab();}
+}
 function closeFab(){
+  document.removeEventListener('click',_fabOutsideClick,true);
   const items=document.getElementById('fab-items');
   const btn=document.getElementById('fab-main-btn');
   if(items){items.classList.add('hidden');}

@@ -110,7 +110,7 @@ async function decryptWithVariants(b64,pp){
     try{
       const result=await decrypt(b64,v);
       // Log which variant worked so user can correct their stored passphrase manually
-      if(v!==pp)console.log('[Auth] Variant matched:',JSON.stringify(v),'stored:',JSON.stringify(pp));
+      if(v!==pp)
       return result;
     }catch(e){continue;}
   }

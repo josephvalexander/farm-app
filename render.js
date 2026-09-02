@@ -576,12 +576,38 @@ function renderWorkersList(){
   const show=S.showAllDry?sorted:sorted.slice(0,10);
   const totalWorkers=sorted.reduce((s,w)=>s+(w.totalWorkers||0),0);
   const totalCost=sorted.reduce((s,w)=>s+(w.totalCost||0),0);
+  // This calendar week (Mon–Sun)
+  const now=new Date();
+  const dow=now.getDay()||7; // 1=Mon, 7=Sun
+  const weekStart=new Date(now); weekStart.setDate(now.getDate()-dow+1); weekStart.setHours(0,0,0,0);
+  const weekEnd=new Date(weekStart); weekEnd.setDate(weekStart.getDate()+6);
+  const weekStr=weekStart.toISOString().slice(0,10);
+  const weekEndStr=weekEnd.toISOString().slice(0,10);
+  const weekWorkers=sorted.filter(w=>w.date>=weekStr&&w.date<=weekEndStr);
+  const weekTotal=weekWorkers.reduce((s,w)=>s+(w.totalWorkers||0),0);
+  const weekCost=weekWorkers.reduce((s,w)=>{
+    // Recompute cost using rate effective on that date for accuracy
+    if(w.totalCost)return s+w.totalCost; // already computed at save time
+    const r=workerRateForDate(w.date);
+    return s+Math.round((w.male||0)*(r.male||0)+(w.female||0)*(r.female||0)+(w.bengali||0)*(r.bengali||0));
+  },0);
+  const weekLabel=`${weekStart.getDate()} ${weekStart.toLocaleString('en-IN',{month:'short'})} – ${weekEnd.getDate()} ${weekEnd.toLocaleString('en-IN',{month:'short'})}`;
   return`
 <div class="card">
   <div class="ct">Summary</div>
   <div class="mg">
-    <div class="met b"><div class="ml">Total worker-days</div><div class="mv">${totalWorkers.toLocaleString('en-IN')}</div><div class="ms">${sorted.length} entries</div></div>
-    <div class="met a"><div class="ml">Total labour cost</div><div class="mv" style="font-size:16px">${fc(totalCost)}</div></div>
+    <div class="met b">
+      <div class="ml">Total worker-days</div>
+      <div class="mv">${totalWorkers.toLocaleString('en-IN')}</div>
+      <div class="ms">${sorted.length} entries${weekTotal>0?` · This week: ${weekTotal} (${weekLabel})`:''}
+      </div>
+    </div>
+    <div class="met a">
+      <div class="ml">Total labour cost</div>
+      <div class="mv" style="font-size:16px">${fc(totalCost)}</div>
+      <div class="ms">${weekCost>0?`This week: ${fc(weekCost)}`:''}
+      </div>
+    </div>
   </div>
 </div>
 <div class="card" style="padding:0;overflow:hidden">
@@ -685,7 +711,7 @@ function renderExpenses(){
   const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
   const byCat={};
   db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
-  const catColors={labor:'var(--brand-glow)',pesticide:'var(--r-tx)',rawmat:'var(--a-mid)',crop:'var(--b-tx)',other:'var(--tx2)'};
+  const catColors={labor:'#d97706',pesticide:'#dc2626',rawmat:'#7c3aed',crop:'#059669',other:'#6b7280'};
   const catSlices=Object.entries(byCat).filter(([,v])=>v>0).map(([k,v])=>({label:CL[k]||k,value:v,color:catColors[k]||'var(--tx3)'}));
   const grouped=groupByPeriod(db.expenses, e=>e.date, e=>e.amount||0, period);
   const avgPeriod=grouped.length?Math.round(totalAll/grouped.length):0;
@@ -980,7 +1006,7 @@ function renderForecast(){
 
   // ── EXPENSE CATEGORY DRIFT ────────────────────────────────────────────────────
   const cats=['labor','pesticide','rawmat','crop','other'];
-  const catColors={labor:'var(--brand-lite)',pesticide:'var(--r-mid)',rawmat:'var(--a-mid)',crop:'var(--b-mid)',other:'var(--tx3)'};
+  const catColors={labor:'#d97706',pesticide:'#dc2626',rawmat:'#7c3aed',crop:'#059669',other:'#6b7280'};
   const half=Math.ceil(allMos.length/2);
   const firstHalf=allMos.slice(0,half),secondHalf=allMos.slice(half);
   const sumCat=(mos,cat)=>mos.reduce((s,k)=>s+(expByMo[k]?.[cat]||0),0);
