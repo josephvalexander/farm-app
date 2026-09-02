@@ -38,21 +38,17 @@
 
 <div class="fab" id="quick-fab" style="display:none">
   <div class="fab-items hidden" id="fab-items">
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='yield';render();setTimeout(()=>showEditYield(null),50)">
-      <span class="fab-item-lbl">Add yield</span>
-      <span class="fab-item-btn" style="background:var(--g-bg);color:var(--g-mid)">📈</span>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='harvest';render();setTimeout(()=>showEditHarvest(null),50)">
+      <span class="fab-item-lbl">Harvest &amp; sale</span>
+      <span class="fab-item-btn" style="background:var(--g-bg);color:var(--g-mid)">🌿</span>
     </button>
     <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='expenses';render();setTimeout(()=>showEditExpense(null),50)">
       <span class="fab-item-lbl">Add expense</span>
       <span class="fab-item-btn" style="background:var(--a-bg);color:var(--a-mid)">💸</span>
     </button>
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='income';render();setTimeout(()=>showEditIncome(null),50)">
-      <span class="fab-item-lbl">Add income</span>
-      <span class="fab-item-btn" style="background:var(--g-bg);color:var(--g-mid)">💰</span>
-    </button>
-    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='drying';render();setTimeout(()=>showEditDrying(null),50)">
-      <span class="fab-item-lbl">Add drying</span>
-      <span class="fab-item-btn" style="background:var(--a-bg);color:var(--a-mid)">☀️</span>
+    <button class="fab-item" onclick="closeFab();setTab('records');S.recTab='workers';render();setTimeout(()=>showEditWorker(null),50)">
+      <span class="fab-item-lbl">Add workers</span>
+      <span class="fab-item-btn" style="background:var(--b-bg);color:var(--b-mid)">👷</span>
     </button>
   </div>
   <button class="fab-main" id="fab-main-btn" onclick="toggleFab()">+</button>

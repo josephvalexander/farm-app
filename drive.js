@@ -361,6 +361,8 @@ function mergeDb(local,cloud){
     incomes:ml(local.incomes,cloud.incomes),
     dryings:ml(local.dryings||[],cloud.dryings||[]),
     buyers:[...new Set([...(local.buyers||[]),...(cloud.buyers||[])])],
+    workers:ml(local.workers||[],cloud.workers||[]),
+    workerRates:ml(local.workerRates||[],cloud.workerRates||[]),
     priceHistory:(()=>{
       // Merge by date, keep most recent entry per date
       const all=[...(local.priceHistory||[]),...(cloud.priceHistory||[])];
@@ -451,7 +453,7 @@ const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,"&#
 
 // ── DELETE WITH TRACKING ──────────────────────────────────────────────────────
 function deleteItem(type,id){
-  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes',drying:'dryings'};
+  const map={section:'sections',season:'seasons',yield:'yields',expense:'expenses',income:'incomes',drying:'dryings',worker:'workers'};
   const key=map[type];if(!key)return;
   db[key]=db[key].filter(x=>x.id!==id);
   if(!db.deletedIds)db.deletedIds=[];

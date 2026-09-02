@@ -125,7 +125,7 @@ function renderDashboard(){
   return`
 <div class="pbanner">
   <div class="pbanner-label">
-    <span>Cardamom prices · Puttady / Bodinaykanur</span>
+    <span>Cardamom prices</span>
     <div style="display:flex;gap:6px">
       <button class="manual-btn" onclick="localStorage.removeItem(PRICE_FETCH_KEY);fetchCardamomPrice(true);showToast('Fetching price…')" style="display:flex;align-items:center;gap:4px">
         <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/><path d="M14 6l.5-2.5 2.5.5M6 14l-.5 2.5-2.5-.5"/></svg>
@@ -509,18 +509,107 @@ function shortLabel(l,period){
 
 // ── RECORDS (wrapper with sub-tabs) ───────────────────────────────────────────
 function renderRecords(){
-  const t=S.recTab||'yield';
+  const t=S.recTab||'harvest';
   const tabs=[
-    {id:'yield', label:'Yield', icon:'📈'},
-    {id:'expenses', label:'Expenses', icon:'💸'},
-    {id:'income', label:'Income', icon:'💰'},
-    {id:'drying', label:'Drying', icon:'☀️'},
+    {id:'harvest', label:'Harvest'},
+    {id:'expenses',label:'Expenses'},
+    {id:'income',  label:'Income'},
+    {id:'workers', label:'Workers'},
   ];
   const subNav=`<div class="subtab-bar" style="position:sticky;top:57px;z-index:10">
     ${tabs.map(tb=>`<button class="stb ${t===tb.id?'active':''}" onclick="S.recTab='${tb.id}';render()">${tb.label}</button>`).join('')}
   </div>`;
-  const inner={yield:renderYield,expenses:renderExpenses,income:renderIncome,drying:renderDrying}[t]||renderYield;
-  return subNav+inner();
+  if(t==='harvest') return subNav+renderHarvestList();
+  if(t==='expenses')return subNav+renderExpenses();
+  if(t==='income')  return subNav+renderIncome();
+  if(t==='workers') return subNav+renderWorkersList();
+  return subNav+renderYield(); // fallback
+}
+
+// ── HARVEST LIST ──────────────────────────────────────────────────────────────
+function renderHarvestList(){
+  const sorted=[...db.yields].sort((a,b)=>b.date.localeCompare(a.date));
+  const show=S.showAllYield?sorted:sorted.slice(0,10);
+  const totalKg=db.yields.reduce((s,y)=>s+(y.qty||0),0);
+  const totalInc=db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  return`
+<div class="card">
+  <div class="ct">Summary</div>
+  <div class="mg">
+    <div class="met g"><div class="ml">Total harvested</div><div class="mv">${totalKg.toLocaleString('en-IN')} kg</div><div class="ms">${db.yields.length} entries</div></div>
+    <div class="met g"><div class="ml">Total income</div><div class="mv" style="font-size:16px">${fc(totalInc)}</div></div>
+  </div>
+</div>
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bor)">
+    <div style="font-size:12px;color:var(--tx3)">Records <span>(${db.yields.length})</span></div>
+    <button onclick="showEditHarvest(null)" class="ia e">+ Add</button>
+  </div>
+  ${sorted.length===0?`<div class="empty">No harvest records yet<br><span style="font-size:12px">Tap + Add to record today's harvest</span></div>`:`
+  ${show.map(y=>{
+    const income=db.incomes.find(i=>i.linkedYieldId===y.id);
+    const total=income?(income.qty*(income.pricePerKg||0)):null;
+    return`<div class="row" style="padding:12px 16px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div class="rt">${fd(y.date)}</div>
+          ${y.sectionId?`<span class="section-chip">${secName(y.sectionId)}</span>`:''}
+        </div>
+        <div class="rs" style="margin-top:3px">
+          ${y.qty} kg${income?` · ₹${income.pricePerKg}/kg → ${fc(total)}`:''}${income?.buyer?' · '+esc(income.buyer):''}${y.labourers?' · '+y.labourers+' workers':''}
+        </div>
+        ${income?.notes?`<div style="font-size:11px;color:var(--tx3);margin-top:2px">${esc(income.notes)}</div>`:''}
+      </div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditHarvest('${y.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('yield','${y.id}','harvest ${fd(y.date)}')">Del</button>
+      </div>
+    </div>`;}).join('')}
+  ${sorted.length>10?`<div style="padding:12px 16px;text-align:center;border-top:1px solid var(--bor)"><button onclick="S.showAllYield=!S.showAllYield;render()" class="ia">${S.showAllYield?'Show less':'Show all '+sorted.length}</button></div>`:''}`}
+</div>`;
+}
+
+// ── WORKERS LIST ──────────────────────────────────────────────────────────────
+function renderWorkersList(){
+  if(!db.workers)db.workers=[];
+  const sorted=[...db.workers].sort((a,b)=>b.date.localeCompare(a.date));
+  const show=S.showAllDry?sorted:sorted.slice(0,10);
+  const totalWorkers=sorted.reduce((s,w)=>s+(w.totalWorkers||0),0);
+  const totalCost=sorted.reduce((s,w)=>s+(w.totalCost||0),0);
+  return`
+<div class="card">
+  <div class="ct">Summary</div>
+  <div class="mg">
+    <div class="met b"><div class="ml">Total worker-days</div><div class="mv">${totalWorkers.toLocaleString('en-IN')}</div><div class="ms">${sorted.length} entries</div></div>
+    <div class="met a"><div class="ml">Total labour cost</div><div class="mv" style="font-size:16px">${fc(totalCost)}</div></div>
+  </div>
+</div>
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bor)">
+    <div style="font-size:12px;color:var(--tx3)">Records <span>(${sorted.length})</span></div>
+    <button onclick="showEditWorker(null)" class="ia e">+ Add</button>
+  </div>
+  ${sorted.length===0?`<div class="empty">No worker records yet<br><span style="font-size:12px">Tap + Add to log today's workers</span></div>`:`
+  ${show.map(w=>{
+    const parts=[];
+    if(w.male)parts.push(w.male+' M');
+    if(w.female)parts.push(w.female+' F');
+    if(w.bengali)parts.push(w.bengali+' B');
+    return`<div class="row" style="padding:12px 16px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="rt">${fd(w.date)}</div>
+          <span style="font-size:12px;font-weight:600;color:var(--b-tx)">${w.totalWorkers} workers</span>
+        </div>
+        <div class="rs" style="margin-top:3px">${parts.join(' · ')}${w.totalCost?' · '+fc(w.totalCost):''}${w.notes?' · '+esc(w.notes):''}</div>
+      </div>
+      <div class="racts">
+        <button class="ia e" onclick="showEditWorker('${w.id}')">Edit</button>
+        <button class="ia d" onclick="confirmDel('worker','${w.id}','workers ${fd(w.date)}')">Del</button>
+      </div>
+    </div>`;}).join('')}
+  ${sorted.length>10?`<div style="padding:12px 16px;text-align:center;border-top:1px solid var(--bor)"><button onclick="S.showAllDry=!S.showAllDry;render()" class="ia">${S.showAllDry?'Show less':'Show all '+sorted.length}</button></div>`:''}`}
+</div>`;
 }
 
 // ── YIELD ─────────────────────────────────────────────────────────────────────

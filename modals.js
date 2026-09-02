@@ -54,14 +54,67 @@ function saveSection(id){
 
 // SEASON — removed
 
-// YIELD
+// HARVEST & SALE (merged yield + income — same-day harvest and sell)
+function showEditHarvest(id){
+  // id can be a yield id — we find its paired income by same date+section
+  const y=id?db.yields.find(x=>x.id===id):null;
+  const pairedIncome=y?db.incomes.find(i=>i.linkedYieldId===y.id):null;
+  const defaultPrice=db.priceRaw||'';
+  modal(`
+<div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-hd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div class="fg"><label class="fl">Section</label><select id="f-hs">${secOpts('Entire farm')}</select></div>
+<div class="fg"><label class="fl">Quantity harvested (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-hq" type="number" step="0.1" value="${y?.qty||''}" placeholder="50"/></div>
+<div class="fg"><label class="fl">Labourers picking</label><input id="f-hl" type="number" step="0.5" value="${y?.labourers||''}" placeholder="e.g. 5"/></div>
+<div style="background:var(--sur2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;border:1px solid var(--bor)">
+  <div style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Sale details</div>
+  <div class="fg"><label class="fl">Price per kg (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-hp" type="number" step="0.5" value="${pairedIncome?.pricePerKg||defaultPrice}" placeholder="Enter price"/></div>
+  <div class="fg"><label class="fl">Buyer <span style="color:var(--r-tx)">*</span></label>
+    <select id="f-hb" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();triggerSync(false);this.outerHTML='<select id=\'f-hb\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
+      ${buyerOpts(pairedIncome?.buyer||'')}
+    </select>
+  </div>
+  <div class="fg" style="margin-bottom:0"><label class="fl">Notes</label><input id="f-hn" type="text" value="${esc(pairedIncome?.notes||y?.notes||'')}" placeholder="Grade, batch, remarks…"/></div>
+</div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveHarvest('${id||''}')">Save</button></div>`,y?'Edit harvest':'Add harvest & sale');
+  if(y){const s=document.getElementById('f-hs');if(s&&y.sectionId)s.value=y.sectionId;}
+}
+function saveHarvest(yieldId){
+  const qtyEl=document.getElementById('f-hq'),priceEl=document.getElementById('f-hp'),buyerEl=document.getElementById('f-hb');
+  const qty=parseFloat(qtyEl.value),pricePerKg=parseFloat(priceEl.value);
+  if(!qty){qtyEl.style.borderColor='var(--r-tx)';qtyEl.focus();return;}
+  if(!pricePerKg){priceEl.style.borderColor='var(--r-tx)';priceEl.focus();return;}
+  if(buyerEl&&!buyerEl.value){buyerEl.style.borderColor='var(--r-tx)';buyerEl.focus();return;}
+  const date=document.getElementById('f-hd').value;
+  const sectionId=document.getElementById('f-hs').value||null;
+  const labourers=parseFloat(document.getElementById('f-hl').value)||null;
+  const buyer=buyerEl.value.trim();
+  const notes=document.getElementById('f-hn').value.trim();
+  // Save yield record
+  const yData={sectionId,date,qty,labourers,notes,updatedAt:Date.now()};
+  let finalYieldId=yieldId;
+  if(yieldId){
+    const yi=db.yields.findIndex(x=>x.id===yieldId);
+    if(yi>=0)db.yields[yi]={...db.yields[yi],...yData};
+  } else {
+    finalYieldId=uid();
+    db.yields.push({id:finalYieldId,createdAt:Date.now(),...yData});
+  }
+  // Save paired income record
+  const iData={date,qty,pricePerKg,type:'raw',buyer,sectionId,notes,linkedYieldId:finalYieldId,updatedAt:Date.now()};
+  const existingIncome=db.incomes.findIndex(i=>i.linkedYieldId===finalYieldId);
+  if(existingIncome>=0)db.incomes[existingIncome]={...db.incomes[existingIncome],...iData};
+  else db.incomes.push({id:uid(),createdAt:Date.now(),...iData});
+  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+}
+
+// YIELD (standalone — kept for non-sale harvests, accessible from Records tab)
 function showEditYield(id){
   const y=id?db.yields.find(x=>x.id===id):null;
   modal(`
 <div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-yd" type="date" value="${y?.date||new Date().toISOString().slice(0,10)}"/></div>
 <div class="fg"><label class="fl">Section</label><select id="f-ys">${secOpts('Entire farm')}</select></div>
-<div class="fg"><label class="fl">Yield (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-yq" type="number" value="${y?.qty||''}" placeholder="50"/></div>
-<div class="fg"><label class="fl">Labourers picking</label><input id="f-yl" type="number" value="${y?.labourers||''}" placeholder="e.g. 5" min="0"/></div>
+<div class="fg"><label class="fl">Yield (kg) <span style="color:var(--r-tx)">*</span></label><input id="f-yq" type="number" step="0.1" value="${y?.qty||''}" placeholder="50"/></div>
+<div class="fg"><label class="fl">Labourers picking</label><input id="f-yl" type="number" step="0.5" value="${y?.labourers||''}" placeholder="e.g. 5"/></div>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveYield('${id||''}')">Save</button></div>`,y?'Edit yield':'Add yield');
   if(y){const s=document.getElementById('f-ys');if(s&&y.sectionId)s.value=y.sectionId;}
 }
@@ -69,7 +122,7 @@ function saveYield(id){
   const qtyEl=document.getElementById('f-yq');
   const qty=parseFloat(qtyEl.value);
   if(!qty){qtyEl.style.borderColor='var(--r-tx)';qtyEl.focus();return;}
-  const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,labourers:parseInt(document.getElementById('f-yl').value)||null,updatedAt:Date.now()};
+  const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,labourers:parseFloat(document.getElementById('f-yl').value)||null,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
@@ -181,25 +234,66 @@ async function saveGeminiKey(){
   }catch(e){showToast('Save failed: '+e.message);}
 }
 
-// DRYING
-function showEditDrying(id){
-  const d=id?db.dryings.find(x=>x.id===id):null;
-  modal(`
-<div class="fg"><label class="fl">Date</label><input id="f-dd" type="date" value="${d?.date||new Date().toISOString().slice(0,10)}"/></div>
-<div class="fg"><label class="fl">Raw green input (kg)</label><input id="f-dr" type="number" value="${d?.rawQty||''}" placeholder="400"/></div>
-<div class="fg"><label class="fl">Dried output (kg)</label><input id="f-do" type="number" value="${d?.driedQty||''}" placeholder="95"/></div>
-
-<div class="fg"><label class="fl">Notes</label><input id="f-dn" type="text" value="${esc(d?.notes||'')}" placeholder="Grade, batch ref…"/></div>
-<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveDrying('${id||''}')">Save</button></div>`,d?'Edit drying record':'Add drying record');
+// WORKERS — daily labour tracker
+function currentWorkerRate(){
+  const rates=(db.workerRates||[]).slice().sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return rates[0]||{effectiveFrom:'',male:0,female:0,bengali:0};
 }
-function saveDrying(id){
-  const rawQty=parseFloat(document.getElementById('f-dr').value),driedQty=parseFloat(document.getElementById('f-do').value);
-  if(!rawQty||!driedQty)return;
-  const data={date:document.getElementById('f-dd').value,rawQty,driedQty,notes:document.getElementById('f-dn').value.trim(),updatedAt:Date.now()};
-  if(!db.dryings)db.dryings=[];
-  if(id){const i=db.dryings.findIndex(x=>x.id===id);if(i>=0)db.dryings[i]={...db.dryings[i],...data};}
-  else db.dryings.push({id:uid(),createdAt:Date.now(),...data});
+function workerRateForDate(date){
+  const rates=(db.workerRates||[]).slice().sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return rates.find(r=>r.effectiveFrom<=date)||rates[rates.length-1]||{male:0,female:0,bengali:0};
+}
+function showEditWorker(id){
+  const w=id?db.workers.find(x=>x.id===id):null;
+  const rate=currentWorkerRate();
+  modal(`
+<div class="fg"><label class="fl">Date <span style="color:var(--r-tx)">*</span></label><input id="f-wdt" type="date" value="${w?.date||new Date().toISOString().slice(0,10)}"/></div>
+<div style="background:var(--sur2);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px;border:1px solid var(--bor)">
+  <div style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Workers (use 0.5 for half day)</div>
+  <div class="fg"><label class="fl">Male workers</label><input id="f-wm" type="number" step="0.5" min="0" value="${w?.male||''}" placeholder="0"/></div>
+  <div class="fg"><label class="fl">Female workers</label><input id="f-wf" type="number" step="0.5" min="0" value="${w?.female||''}" placeholder="0"/></div>
+  <div class="fg" style="margin-bottom:0"><label class="fl">Bengali workers</label><input id="f-wb" type="number" step="0.5" min="0" value="${w?.bengali||''}" placeholder="0"/></div>
+</div>
+<div class="fg"><label class="fl">Notes</label><input id="f-wn" type="text" value="${esc(w?.notes||'')}" placeholder="Task, section, remarks…"/></div>
+${rate.male||rate.female||rate.bengali?`<p style="font-size:11px;color:var(--tx3)">Current rates: Male ₹${rate.male} · Female ₹${rate.female} · Bengali ₹${rate.bengali}</p>`:'<p style="font-size:11px;color:var(--a-mid)">Set worker rates in Settings to calculate labour cost automatically</p>'}
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveWorker('${id||''}')">Save</button></div>`,w?'Edit workers':'Add workers');
+}
+function saveWorker(id){
+  const date=document.getElementById('f-wdt').value;
+  const male=parseFloat(document.getElementById('f-wm').value)||0;
+  const female=parseFloat(document.getElementById('f-wf').value)||0;
+  const bengali=parseFloat(document.getElementById('f-wb').value)||0;
+  if(!male&&!female&&!bengali){showToast('Enter at least one worker count');return;}
+  const rate=workerRateForDate(date);
+  const totalCost=Math.round(male*(rate.male||0)+female*(rate.female||0)+bengali*(rate.bengali||0));
+  const data={date,male,female,bengali,totalWorkers:male+female+bengali,totalCost,rateSnapshot:{...rate},notes:document.getElementById('f-wn').value.trim(),updatedAt:Date.now()};
+  if(!db.workers)db.workers=[];
+  if(id){const i=db.workers.findIndex(x=>x.id===id);if(i>=0)db.workers[i]={...db.workers[i],...data};}
+  else db.workers.push({id:uid(),createdAt:Date.now(),...data});
   saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+}
+
+function showEditWorkerRate(){
+  const r=currentWorkerRate();
+  modal(`
+<p style="font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.5">Set the daily wage rate for each worker type. A new rate entry is created with today's date, preserving historical rates for accurate past cost calculations.</p>
+<div class="fg"><label class="fl">Male worker rate (₹/day)</label><input id="f-rm" type="number" value="${r.male||''}" placeholder="650"/></div>
+<div class="fg"><label class="fl">Female worker rate (₹/day)</label><input id="f-rf" type="number" value="${r.female||''}" placeholder="550"/></div>
+<div class="fg"><label class="fl">Bengali worker rate (₹/day)</label><input id="f-rb" type="number" value="${r.bengali||''}" placeholder="700"/></div>
+<div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="saveWorkerRate()">Save rate</button></div>`,'Worker rates');
+}
+function saveWorkerRate(){
+  const male=parseFloat(document.getElementById('f-rm').value)||0;
+  const female=parseFloat(document.getElementById('f-rf').value)||0;
+  const bengali=parseFloat(document.getElementById('f-rb').value)||0;
+  if(!male&&!female&&!bengali){showToast('Enter at least one rate');return;}
+  if(!db.workerRates)db.workerRates=[];
+  const today=new Date().toISOString().slice(0,10);
+  // Only create new entry if rates actually changed or no entry exists
+  const current=currentWorkerRate();
+  if(current.male===male&&current.female===female&&current.bengali===bengali){showToast('Rates unchanged');closeModal();return;}
+  db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now()});
+  saveLocal();closeModal();render();showToast('Rates updated from '+today);setTimeout(()=>triggerSync(false),2000);
 }
 
 // SHARED FOLDER SETUP
@@ -353,6 +447,35 @@ function renderSettings(){
       </div>
     </div>
   </div>
+</div>
+
+<div class="settings-group">
+  <div class="settings-group-title">Worker rates</div>
+  ${(()=>{
+    const r=currentWorkerRate();
+    const history=(db.workerRates||[]).slice().sort((a,b)=>b.effectiveFrom.localeCompare(a.effectiveFrom));
+    return`
+  <div style="padding:12px 16px;border-bottom:1px solid var(--bor)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--tx)">Current rates</div>
+        <div style="font-size:11px;color:var(--tx3)">${r.effectiveFrom?'From '+r.effectiveFrom:'Not set'}</div>
+      </div>
+      <button onclick="showEditWorkerRate()" class="ia e">Update rates</button>
+    </div>
+    ${r.male||r.female||r.bengali?`
+    <div style="display:flex;gap:16px">
+      <div><div style="font-size:10px;color:var(--tx3)">Male</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.male}</div></div>
+      <div><div style="font-size:10px;color:var(--tx3)">Female</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.female}</div></div>
+      <div><div style="font-size:10px;color:var(--tx3)">Bengali</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.bengali}</div></div>
+    </div>`:'<p style="font-size:12px;color:var(--a-mid)">No rates set — tap Update rates to add</p>'}
+  </div>
+  ${history.length>1?`
+  <div style="padding:10px 16px">
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:6px">Rate history</div>
+    ${history.map(h=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bor);font-size:12px"><span style="color:var(--tx2)">${h.effectiveFrom}</span><span style="color:var(--tx3)">M ₹${h.male} · F ₹${h.female} · B ₹${h.bengali}</span></div>`).join('')}
+  </div>`:''}`;
+  })()}
 </div>
 
 <div class="settings-group">
@@ -582,7 +705,7 @@ function confirmClearLocal(){
 }
 function doClearLocal(){
   localStorage.removeItem(DB_KEY);
-  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],buyers:[],priceHistory:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
+  db={sections:[],seasons:[],yields:[],expenses:[],incomes:[],dryings:[],workers:[],workerRates:[],buyers:[],priceHistory:[],priceRaw:null,priceDried:null,priceDate:null,priceSource:null,updatedAt:Date.now()};
   closeModal();render();showToast('Local data cleared. Tap Sync to restore from Drive.');
 }
 
