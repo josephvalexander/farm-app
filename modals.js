@@ -562,7 +562,7 @@ function setThemePref(pref){
 function setTab(tab){
   const prevTab=S.tab;
   // sub-tabs live inside Records
-  const recTabs=['yield','expenses','income','drying'];
+  const recTabs=['yield','expenses','income','drying','harvest','workers'];
   if(recTabs.includes(tab)){
     S.recTab=tab;
     S.tab='records';
@@ -570,6 +570,8 @@ function setTab(tab){
     document.getElementById('nav-records')?.classList.add('active');
   } else {
     S.tab=tab;
+    // Reset recTab to harvest when navigating away and back to records
+    if(tab==='records') S.recTab='harvest';
     document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
     document.getElementById('nav-'+tab)?.classList.add('active');
   }
@@ -592,7 +594,11 @@ function toggleFab(){
   const btn=document.getElementById('fab-main-btn');
   const open=!items.classList.contains('hidden');
   if(open){closeFab();}
-  else{items.classList.remove('hidden');btn.classList.add('open');}
+  else{
+    items.classList.remove('hidden');
+    btn.classList.add('open');
+    setTimeout(()=>document.addEventListener('click',_fabOutsideClick,true),50);
+  }
 }
 function _fabOutsideClick(e){
   const fab=document.getElementById('quick-fab');

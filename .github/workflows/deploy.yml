@@ -16,19 +16,26 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Inject git SHA into service worker
+      - name: Inject git SHA into service worker and index.html
         run: |
           SHA=$(git rev-parse --short HEAD)
+          echo "Injecting cache version: vp-${SHA}"
+          # Update sw.js cache version
           sed -i "s/const CACHE_VERSION = '[^']*'/const CACHE_VERSION = 'vp-${SHA}'/" sw.js
-          echo "Cache version set to: vp-${SHA}"
+          # Also add ?v= cache-bust query to all JS/CSS script tags in index.html
+          sed -i "s/src=\"core\.js[^\"]*\"/src=\"core.js?v=${SHA}\"/" index.html
+          sed -i "s/src=\"drive\.js[^\"]*\"/src=\"drive.js?v=${SHA}\"/" index.html
+          sed -i "s/src=\"insights\.js[^\"]*\"/src=\"insights.js?v=${SHA}\"/" index.html
+          sed -i "s/src=\"render\.js[^\"]*\"/src=\"render.js?v=${SHA}\"/" index.html
+          sed -i "s/src=\"modals\.js[^\"]*\"/src=\"modals.js?v=${SHA}\"/" index.html
+          sed -i "s/href=\"style\.css[^\"]*\"/href=\"style.css?v=${SHA}\"/" index.html
 
-      - name: Commit updated sw.js
+      - name: Commit updated files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add sw.js
-          # Only commit if sw.js actually changed
-          git diff --staged --quiet || git commit -m "chore: update cache version to vp-$(git rev-parse --short HEAD~1)"
+          git add sw.js index.html
+          git diff --staged --quiet || git commit -m "chore: cache-bust to vp-$(git rev-parse --short HEAD~1)"
 
       - name: Push
         run: git push
