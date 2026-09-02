@@ -109,9 +109,7 @@ async function decryptWithVariants(b64,pp){
   for(const v of variants){
     try{
       const result=await decrypt(b64,v);
-      // Log which variant worked so user can correct their stored passphrase manually
-      if(v!==pp)
-      return result;
+      return result; // first variant that decrypts successfully wins
     }catch(e){continue;}
   }
   throw new Error('Wrong passphrase');
