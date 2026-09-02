@@ -115,8 +115,17 @@ function initInsights(){
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard(){
-  const inc=totalInc(),exp=totalExp(),profit=inc-exp,plants=totalPlants(),ykg=totalYield();
-  const byCat={};db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
+  const curYear=new Date().getFullYear();
+  const yrPfx=curYear+'-';
+  const yrYields=db.yields.filter(y=>y.date&&y.date.startsWith(yrPfx));
+  const yrIncomes=db.incomes.filter(i=>i.date&&i.date.startsWith(yrPfx));
+  const yrExpenses=db.expenses.filter(e=>e.date&&e.date.startsWith(yrPfx));
+  const ykg=yrYields.reduce((s,y)=>s+(y.qty||0),0);
+  const inc=yrIncomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const exp=yrExpenses.reduce((s,e)=>s+(e.amount||0),0);
+  const profit=inc-exp;
+  const plants=totalPlants();
+  const byCat={};yrExpenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const maxE=Math.max(...Object.values(byCat),1);
   const bClr={labor:'var(--brand-glow)',pesticide:'var(--r-tx)',rawmat:'var(--a-mid)',crop:'var(--b-tx)',other:'var(--tx3)'};
   const recent=[...db.yields.map(y=>({t:'y',y,ts:y.createdAt||0})),...db.incomes.map(i=>({t:'i',i,ts:i.createdAt||0})),...db.expenses.map(e=>({t:'e',e,ts:e.createdAt||0}))].sort((a,b)=>b.ts-a.ts).slice(0,5);
@@ -190,7 +199,7 @@ function renderDashboard(){
 </div>
 
 <div class="card">
-  <div class="ct">Farm overview</div>
+  <div class="ct">Farm overview <span style="font-size:11px;font-weight:600;background:var(--g-bg);color:var(--g-tx);border:1px solid var(--g-bor);border-radius:10px;padding:2px 8px;margin-left:4px">${curYear}</span></div>
   <div class="mg">
     <div class="met"><div class="ml">Total plants</div><div class="mv">${plants.toLocaleString('en-IN')}</div><div class="ms">${db.sections.length} sections</div></div>
     <div class="met"><div class="ml">Total yield</div><div class="mv">${ykg} kg</div></div>
@@ -528,14 +537,17 @@ function renderRecords(){
 function renderHarvestList(){
   const sorted=[...db.yields].sort((a,b)=>b.date.localeCompare(a.date));
   const show=S.showAllYield?sorted:sorted.slice(0,10);
-  const totalKg=db.yields.reduce((s,y)=>s+(y.qty||0),0);
-  const totalInc=db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const yr=new Date().getFullYear()+'';
+  const yrYields=db.yields.filter(y=>y.date&&y.date.startsWith(yr));
+  const yrIncomes=db.incomes.filter(i=>i.date&&i.date.startsWith(yr));
+  const totalKg=yrYields.reduce((s,y)=>s+(y.qty||0),0);
+  const totalInc=yrIncomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
   return`
 <div class="card">
-  <div class="ct">Summary</div>
+  <div class="ct">Year to date <span style="font-size:11px;font-weight:600;background:var(--g-bg);color:var(--g-tx);border:1px solid var(--g-bor);border-radius:10px;padding:2px 8px;margin-left:4px">${yr}</span></div>
   <div class="mg">
-    <div class="met g"><div class="ml">Total harvested</div><div class="mv">${totalKg.toLocaleString('en-IN')} kg</div></div>
-    <div class="met g"><div class="ml">Total income</div><div class="mv" style="font-size:16px">${fc(totalInc)}</div></div>
+    <div class="met g"><div class="ml">Harvested</div><div class="mv">${totalKg.toLocaleString('en-IN')} kg</div></div>
+    <div class="met g"><div class="ml">Income</div><div class="mv" style="font-size:16px">${fc(totalInc)}</div></div>
   </div>
 </div>
 <div class="card" style="padding:0;overflow:hidden">
@@ -712,20 +724,22 @@ function renderYield(){
 // ── EXPENSES ──────────────────────────────────────────────────────────────────
 function renderExpenses(){
   const period=S.expPeriod||'month';
-  const t=S.expTab,filtered=t==='all'?db.expenses:db.expenses.filter(e=>e.category===t);
-  const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
+  const yr=new Date().getFullYear()+'';
+  const yrExp=db.expenses.filter(e=>e.date&&e.date.startsWith(yr));
+  const t=S.expTab,filtered=t==='all'?yrExp:yrExp.filter(e=>e.category===t);
+  const totalAll=yrExp.reduce((s,e)=>s+e.amount,0);
   const byCat={};
-  db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
+  yrExp.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
   const catColors={labor:'#e07b00',pesticide:'#c0392b',rawmat:'#2980b9',crop:'#27ae60',other:'#95a5a6'};
   const catSlices=Object.entries(byCat).filter(([,v])=>v>0).map(([k,v])=>({label:CL[k]||k,value:v,color:catColors[k]||'var(--tx3)'}));
-  const grouped=groupByPeriod(db.expenses, e=>e.date, e=>e.amount||0, period);
+  const grouped=groupByPeriod(yrExp, e=>e.date, e=>e.amount||0, period);
   const avgPeriod=grouped.length?Math.round(totalAll/grouped.length):0;
   const peakEntry=grouped.length?grouped.reduce((a,b)=>b.value>a.value?b:a):null;
   const periodLbl={month:'month',quarter:'quarter',year:'year'}[period];
   return`
 <div class="card">
   <button onclick="showEditExpense(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--r-bg);border:1.5px solid var(--r-bor);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--r-tx);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
-  <div class="ct">Expense overview</div>
+  <div class="ct">Year to date <span style="font-size:11px;font-weight:600;background:var(--a-bg);color:var(--a-tx);border:1px solid var(--a-bor);border-radius:10px;padding:2px 8px;margin-left:4px">${yr}</span></div>
   <div class="mg" style="margin-bottom:14px">
     <div class="met r"><div class="ml">Total spent</div><div class="mv">${fc(totalAll)}</div></div>
     <div class="met"><div class="ml">Avg / ${periodLbl}</div><div class="mv" style="font-size:15px">${fc(avgPeriod)}</div><div class="ms">over ${grouped.length} ${periodLbl}s</div></div>
@@ -914,137 +928,141 @@ function renderDrying(){
 
 function renderForecast(){
   const now=new Date();
+  const curYear=now.getFullYear();
   const plants=totalPlants();
   const noData=db.yields.length===0&&db.expenses.length===0;
   if(noData)return`<div class="card"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3v18h18M7 16l4-5 4 3 4-6"/></svg><br>Add yield and expense records to see analytics</div></div>`;
 
+  // ── DATE RANGE ────────────────────────────────────────────────────────────────
+  const defaultFrom=curYear+'-01-01';
+  const defaultTo=now.toISOString().slice(0,10);
+  if(!S.analyticsFrom)S.analyticsFrom=defaultFrom;
+  if(!S.analyticsTo)S.analyticsTo=defaultTo;
+  const aFrom=S.analyticsFrom;
+  const aTo=S.analyticsTo;
+
+  const quickSets=[
+    {label:'Last month',fn:()=>{const d=new Date(now.getFullYear(),now.getMonth()-1,1);const e=new Date(now.getFullYear(),now.getMonth(),0);return[d.toISOString().slice(0,10),e.toISOString().slice(0,10)];}},
+    {label:'This year',fn:()=>[curYear+'-01-01',defaultTo]},
+    {label:'Last year',fn:()=>[(curYear-1)+'-01-01',(curYear-1)+'-12-31']},
+    {label:'All time',fn:()=>{const all=[...db.yields,...db.expenses,...db.incomes].map(r=>r.date).filter(Boolean).sort();return[all[0]||defaultFrom,defaultTo];}},
+  ];
+
+  // ── FILTER DATA TO RANGE ──────────────────────────────────────────────────────
+  const inRange=d=>d&&d>=aFrom&&d<=aTo;
+  const fYields=db.yields.filter(y=>inRange(y.date));
+  const fExpenses=db.expenses.filter(e=>inRange(e.date));
+  const fIncomes=db.incomes.filter(i=>inRange(i.date));
+
   // ── HELPERS ──────────────────────────────────────────────────────────────────
-  const moKey=d=>d.slice(0,7); // YYYY-MM
+  const moKey=d=>d.slice(0,7);
   const moLabel=k=>{const[y,m]=k.split('-');return new Date(+y,+m-1,1).toLocaleDateString('en-IN',{month:'short',year:'2-digit'});};
   const trendArrow=(curr,prev)=>prev<=0?'':curr>prev*1.05?'<span style="color:var(--g-mid)">↑</span>':curr<prev*0.95?'<span style="color:var(--r-tx)">↓</span>':'<span style="color:var(--tx3)">→</span>';
   const pct=v=>v===Infinity||isNaN(v)?'—':Math.round(v)+'%';
   const bar=(val,max,color='var(--brand-lite)')=>`<div style="flex:1;height:7px;background:var(--sur2);border-radius:4px;overflow:hidden;border:1px solid var(--bor)"><div style="width:${Math.min(100,Math.round(val/Math.max(max,1)*100))}%;height:100%;background:${color};border-radius:4px"></div></div>`;
 
-  // ── AGGREGATE BY MONTH ───────────────────────────────────────────────────────
+  // ── AGGREGATE BY MONTH (filtered) ─────────────────────────────────────────────
   const yieldByMo={},expByMo={},incByMo={},labByMo={};
-  db.yields.forEach(y=>{
-    if(!y.date)return;
+  fYields.forEach(y=>{
     const k=moKey(y.date);
     if(!yieldByMo[k])yieldByMo[k]=0;
     yieldByMo[k]+=(y.qty||0);
     if(y.labourers){if(!labByMo[k])labByMo[k]={kg:0,days:0};labByMo[k].kg+=(y.qty||0);labByMo[k].days+=(y.labourers||0);}
   });
-  db.expenses.forEach(e=>{
-    if(!e.date)return;
+  fExpenses.forEach(e=>{
     const k=moKey(e.date);
     if(!expByMo[k])expByMo[k]={total:0,labor:0,pesticide:0,rawmat:0,crop:0,other:0};
     expByMo[k].total+=(e.amount||0);
     expByMo[k][e.category]=(expByMo[k][e.category]||0)+(e.amount||0);
   });
-  db.incomes.forEach(i=>{
-    if(!i.date)return;
+  fIncomes.forEach(i=>{
     const k=moKey(i.date);
     if(!incByMo[k])incByMo[k]=0;
     incByMo[k]+=(i.qty||0)*(i.pricePerKg||0);
   });
 
-  // All months that appear in any record
   const allMos=[...new Set([...Object.keys(yieldByMo),...Object.keys(expByMo),...Object.keys(incByMo)])].sort();
   const last6=allMos.slice(-6);
-  const last12=allMos.slice(-12);
 
-  // Totals
-  const totalYield=db.yields.reduce((s,y)=>s+(y.qty||0),0);
-  const totalExp=db.expenses.reduce((s,e)=>s+(e.amount||0),0);
-  const totalInc=db.incomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
-  const totalLaborExp=db.expenses.filter(e=>e.category==='labor').reduce((s,e)=>s+(e.amount||0),0);
+  // Totals (filtered)
+  const totalYield=fYields.reduce((s,y)=>s+(y.qty||0),0);
+  const totalExp=fExpenses.reduce((s,e)=>s+(e.amount||0),0);
+  const totalInc=fIncomes.reduce((s,i)=>s+(i.qty||0)*(i.pricePerKg||0),0);
+  const totalLaborExp=fExpenses.filter(e=>e.category==='labor').reduce((s,e)=>s+(e.amount||0),0);
 
-  // ── SECTION PERFORMANCE RANKING ──────────────────────────────────────────────
+
+  // ── SECTION PERFORMANCE (use filtered data) ─────────────────────────────────
   const secYield={};
-  db.yields.forEach(y=>{const k=y.sectionId||'__all';secYield[k]=(secYield[k]||0)+(y.qty||0);});
+  fYields.forEach(y=>{const k=y.sectionId||'__all';secYield[k]=(secYield[k]||0)+(y.qty||0);});
   const secRanked=Object.entries(secYield)
-    .map(([id,kg])=>{
-      const sec=db.sections.find(s=>s.id===id);
-      const plants=sec?.plants||0;
-      return{name:sec?sec.name:'All sections',kg,plants,kgPerPlant:plants>0?+(kg/plants).toFixed(2):null};
-    })
+    .map(([id,kg])=>{const sec=db.sections.find(s=>s.id===id);const p=sec?.plants||0;return{name:sec?sec.name:'All sections',kg,plants:p,kgPerPlant:p>0?+(kg/p).toFixed(2):null};})
     .sort((a,b)=>b.kg-a.kg);
   const maxSecKg=Math.max(...secRanked.map(s=>s.kg),1);
 
-  // ── HARVEST TREND (last 6 months) ─────────────────────────────────────────────
   const harvestTrend=last6.map(k=>({mo:k,label:moLabel(k),kg:yieldByMo[k]||0}));
   const maxHarvest=Math.max(...harvestTrend.map(r=>r.kg),1);
   const prevHarvest=harvestTrend.length>=2?harvestTrend[harvestTrend.length-2].kg:0;
   const currHarvest=harvestTrend.length>=1?harvestTrend[harvestTrend.length-1].kg:0;
   const avg6=harvestTrend.reduce((s,r)=>s+r.kg,0)/Math.max(harvestTrend.length,1);
 
-  // ── BEST HARVEST MONTH (by month-of-year across all history) ─────────────────
   const byMoOfYear=Array(12).fill(0).map(()=>({total:0,count:0}));
-  db.yields.forEach(y=>{if(!y.date)return;const mo=parseInt(y.date.slice(5,7))-1;byMoOfYear[mo].total+=(y.qty||0);byMoOfYear[mo].count++;});
+  fYields.forEach(y=>{const mo=parseInt(y.date.slice(5,7))-1;byMoOfYear[mo].total+=(y.qty||0);byMoOfYear[mo].count++;});
   const moNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const bestMoIdx=byMoOfYear.reduce((bi,m,i,a)=>m.total>a[bi].total?i:bi,0);
   const bestMoData=byMoOfYear.map((m,i)=>({label:moNames[i],avg:m.count>0?Math.round(m.total/m.count):0}));
   const maxMoAvg=Math.max(...bestMoData.map(m=>m.avg),1);
 
-  // ── YIELD PER LABOURER ────────────────────────────────────────────────────────
   const labMos=Object.entries(labByMo).sort().slice(-6);
   const hasLabData=labMos.length>0;
   const maxLabEff=hasLabData?Math.max(...labMos.map(([,v])=>v.days>0?v.kg/v.days:0),1):1;
 
-  // ── COST PER KG ───────────────────────────────────────────────────────────────
   const costPerKg=totalYield>0?totalExp/totalYield:null;
   const last3Mos=last6.slice(-3);
-  const cpkByMo=last3Mos.map(k=>({
-    label:moLabel(k),
-    cpk:(yieldByMo[k]||0)>0?(expByMo[k]?.total||0)/(yieldByMo[k]||1):null
-  }));
+  const cpkByMo=last3Mos.map(k=>({label:moLabel(k),cpk:(yieldByMo[k]||0)>0?(expByMo[k]?.total||0)/(yieldByMo[k]||1):null}));
 
-  // ── GROSS MARGIN TREND ────────────────────────────────────────────────────────
-  const marginTrend=last6.map(k=>{
-    const inc=incByMo[k]||0,exp=expByMo[k]?.total||0;
-    const margin=inc>0?Math.round((inc-exp)/inc*100):null;
-    return{label:moLabel(k),inc,exp,margin,profit:inc-exp};
-  });
+  const marginTrend=last6.map(k=>{const inc=incByMo[k]||0,exp=expByMo[k]?.total||0;const margin=inc>0?Math.round((inc-exp)/inc*100):null;return{label:moLabel(k),inc,exp,margin,profit:inc-exp};});
   const prevMargin=marginTrend.length>=2?marginTrend[marginTrend.length-2].margin:null;
   const currMargin=marginTrend.length>=1?marginTrend[marginTrend.length-1].margin:null;
 
-  // ── EXPENSE CATEGORY DRIFT ────────────────────────────────────────────────────
   const cats=['labor','pesticide','rawmat','crop','other'];
   const catColors={labor:'#e07b00',pesticide:'#c0392b',rawmat:'#2980b9',crop:'#27ae60',other:'#95a5a6'};
   const half=Math.ceil(allMos.length/2);
   const firstHalf=allMos.slice(0,half),secondHalf=allMos.slice(half);
   const sumCat=(mos,cat)=>mos.reduce((s,k)=>s+(expByMo[k]?.[cat]||0),0);
-  const catDrift=cats.map(c=>{
-    const a=sumCat(firstHalf,c),b=sumCat(secondHalf,c);
-    const drift=a>0?Math.round((b-a)/a*100):null;
-    return{cat:c,label:CL[c],total:b,drift};
-  }).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+  const catDrift=cats.map(c=>{const a=sumCat(firstHalf,c),b=sumCat(secondHalf,c);const drift=a>0?Math.round((b-a)/a*100):null;return{cat:c,label:CL[c],total:b,drift};}).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxCatTotal=Math.max(...catDrift.map(c=>c.total),1);
 
-  // ── BREAK-EVEN PRICE ──────────────────────────────────────────────────────────
   const recentMos=last6;
   const recentYield=recentMos.reduce((s,k)=>s+(yieldByMo[k]||0),0);
   const recentExp=recentMos.reduce((s,k)=>s+(expByMo[k]?.total||0),0);
   const breakEven=recentYield>0?Math.ceil(recentExp/recentYield):null;
-  const lastSalePrice=db.incomes.length>0?db.incomes[db.incomes.length-1].pricePerKg:null;
+  const lastSalePrice=fIncomes.length>0?fIncomes[fIncomes.length-1].pricePerKg:null;
 
-  // ── INCOME VS EXPENSE WATERFALL (monthly, last 6) ─────────────────────────────
-  const waterfall=last6.map(k=>({
-    label:moLabel(k),
-    inc:Math.round(incByMo[k]||0),
-    exp:Math.round(expByMo[k]?.total||0),
-    profit:Math.round((incByMo[k]||0)-(expByMo[k]?.total||0))
-  }));
+  const waterfall=last6.map(k=>({label:moLabel(k),inc:Math.round(incByMo[k]||0),exp:Math.round(expByMo[k]?.total||0),profit:Math.round((incByMo[k]||0)-(expByMo[k]?.total||0))}));
   const maxWF=Math.max(...waterfall.map(w=>Math.max(w.inc,w.exp)),1);
 
-  // ── LABOUR COST % OF INCOME ───────────────────────────────────────────────────
   const laborPct=totalInc>0?Math.round(totalLaborExp/totalInc*100):null;
-  const laborMoTrend=last6.map(k=>({
-    label:moLabel(k),
-    pct:(incByMo[k]||0)>0?Math.round((expByMo[k]?.labor||0)/(incByMo[k]||1)*100):null
-  }));
+  const laborMoTrend=last6.map(k=>({label:moLabel(k),pct:(incByMo[k]||0)>0?Math.round((expByMo[k]?.labor||0)/(incByMo[k]||1)*100):null}));
 
   return`
+
+<!-- ── DATE RANGE PICKER ── -->
+<div class="card" style="padding:14px 16px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${quickSets.map(q=>`<button onclick="const r=(${q.fn.toString()})();S.analyticsFrom=r[0];S.analyticsTo=r[1];render()" style="padding:5px 12px;font-size:11px;font-weight:600;border-radius:20px;border:1.5px solid var(--bor2);background:${(q.label==='This year'&&aFrom===curYear+'-01-01'&&aTo===defaultTo)||(q.label==='All time'&&aFrom<curYear+'-01-01')||(q.label==='Last year'&&aFrom===(curYear-1)+'-01-01'&&aTo===(curYear-1)+'-12-31')||(q.label==='Last month'&&aTo!==defaultTo&&aFrom!==curYear+'-01-01'&&aFrom!==(curYear-1)+'-01-01')?'var(--g-bg)':'none'};color:${(q.label==='This year'&&aFrom===curYear+'-01-01'&&aTo===defaultTo)||(q.label==='All time'&&aFrom<curYear+'-01-01')||(q.label==='Last year'&&aFrom===(curYear-1)+'-01-01'&&aTo===(curYear-1)+'-12-31')||(q.label==='Last month'&&aTo!==defaultTo&&aFrom!==curYear+'-01-01'&&aFrom!==(curYear-1)+'-01-01')?'var(--g-tx)':'var(--tx3)'};cursor:pointer;font-family:inherit">${q.label}</button>`).join('')}
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px">
+      <span style="font-size:11px;color:var(--tx3);white-space:nowrap">From</span>
+      <input type="date" value="${aFrom}" onchange="S.analyticsFrom=this.value;render()" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--bor2);border-radius:var(--rs);background:var(--sur);color:var(--tx);font-family:inherit"/>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:120px">
+      <span style="font-size:11px;color:var(--tx3);white-space:nowrap">To</span>
+      <input type="date" value="${aTo}" onchange="S.analyticsTo=this.value;render()" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--bor2);border-radius:var(--rs);background:var(--sur);color:var(--tx);font-family:inherit"/>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--tx3);margin-top:8px">${allMos.length} months · ${fYields.length} yield records · ${fExpenses.length} expenses · ${fIncomes.length} sales in range</div>
+</div>
 
 <!-- ════ YIELD ANALYSIS ════ -->
 <div class="card" style="margin-bottom:6px">
