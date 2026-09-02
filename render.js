@@ -193,8 +193,8 @@ function renderDashboard(){
   <div class="ct">Farm overview</div>
   <div class="mg">
     <div class="met"><div class="ml">Total plants</div><div class="mv">${plants.toLocaleString('en-IN')}</div><div class="ms">${db.sections.length} sections</div></div>
-    <div class="met"><div class="ml">Total yield</div><div class="mv">${ykg} kg</div><div class="ms">${db.yields.length} entries</div></div>
-    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(inc)}</div><div class="ms">${db.incomes.length} sales</div></div>
+    <div class="met"><div class="ml">Total yield</div><div class="mv">${ykg} kg</div></div>
+    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(inc)}</div></div>
     <div class="met ${profit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv">${fc(profit)}</div><div class="ms">after expenses</div></div>
   </div>
 </div>
@@ -534,7 +534,7 @@ function renderHarvestList(){
 <div class="card">
   <div class="ct">Summary</div>
   <div class="mg">
-    <div class="met g"><div class="ml">Total harvested</div><div class="mv">${totalKg.toLocaleString('en-IN')} kg</div><div class="ms">${db.yields.length} entries</div></div>
+    <div class="met g"><div class="ml">Total harvested</div><div class="mv">${totalKg.toLocaleString('en-IN')} kg</div></div>
     <div class="met g"><div class="ml">Total income</div><div class="mv" style="font-size:16px">${fc(totalInc)}</div></div>
   </div>
 </div>
@@ -592,21 +592,26 @@ function renderWorkersList(){
     return s+Math.round((w.male||0)*(r.male||0)+(w.female||0)*(r.female||0)+(w.bengali||0)*(r.bengali||0));
   },0);
   const weekLabel=`${weekStart.getDate()} ${weekStart.toLocaleString('en-IN',{month:'short'})} – ${weekEnd.getDate()} ${weekEnd.toLocaleString('en-IN',{month:'short'})}`;
+  // Type totals across all records
+  const totalMale=sorted.reduce((s,w)=>s+(w.male||0),0);
+  const totalFemale=sorted.reduce((s,w)=>s+(w.female||0),0);
+  const totalBengali=sorted.reduce((s,w)=>s+(w.bengali||0),0);
   return`
 <div class="card">
   <div class="ct">Summary</div>
   <div class="mg">
     <div class="met b">
-      <div class="ml">Total worker-days</div>
+      <div class="ml">Worker days</div>
       <div class="mv">${totalWorkers.toLocaleString('en-IN')}</div>
-      <div class="ms">${sorted.length} entries${weekTotal>0?` · This week: ${weekTotal} (${weekLabel})`:''}
+      <div class="ms" style="line-height:1.8">
+        ${[totalMale?`Male: ${totalMale}`:'', totalFemale?`Female: ${totalFemale}`:'', totalBengali?`Bengali: ${totalBengali}`:''].filter(Boolean).join(' · ')||'No records'}
       </div>
+      ${weekTotal>0?`<div class="ms" style="margin-top:2px">${weekLabel}: ${weekTotal}</div>`:''}
     </div>
     <div class="met a">
-      <div class="ml">Total labour cost</div>
+      <div class="ml">Wages</div>
       <div class="mv" style="font-size:16px">${fc(totalCost)}</div>
-      <div class="ms">${weekCost>0?`This week: ${fc(weekCost)}`:''}
-      </div>
+      ${weekCost>0?`<div class="ms" style="margin-top:2px">${weekLabel}: ${fc(weekCost)}</div>`:''}
     </div>
   </div>
 </div>
@@ -711,7 +716,7 @@ function renderExpenses(){
   const totalAll=db.expenses.reduce((s,e)=>s+e.amount,0);
   const byCat={};
   db.expenses.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+e.amount);
-  const catColors={labor:'#d97706',pesticide:'#dc2626',rawmat:'#7c3aed',crop:'#059669',other:'#6b7280'};
+  const catColors={labor:'#e07b00',pesticide:'#c0392b',rawmat:'#2980b9',crop:'#27ae60',other:'#95a5a6'};
   const catSlices=Object.entries(byCat).filter(([,v])=>v>0).map(([k,v])=>({label:CL[k]||k,value:v,color:catColors[k]||'var(--tx3)'}));
   const grouped=groupByPeriod(db.expenses, e=>e.date, e=>e.amount||0, period);
   const avgPeriod=grouped.length?Math.round(totalAll/grouped.length):0;
@@ -722,10 +727,9 @@ function renderExpenses(){
   <button onclick="showEditExpense(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--r-bg);border:1.5px solid var(--r-bor);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--r-tx);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add expense</button>
   <div class="ct">Expense overview</div>
   <div class="mg" style="margin-bottom:14px">
-    <div class="met r"><div class="ml">Total spent</div><div class="mv">${fc(totalAll)}</div><div class="ms">${db.expenses.length} entries</div></div>
+    <div class="met r"><div class="ml">Total spent</div><div class="mv">${fc(totalAll)}</div></div>
     <div class="met"><div class="ml">Avg / ${periodLbl}</div><div class="mv" style="font-size:15px">${fc(avgPeriod)}</div><div class="ms">over ${grouped.length} ${periodLbl}s</div></div>
-    <div class="met a"><div class="ml">Highest ${periodLbl}</div><div class="mv" style="font-size:13px">${peakEntry?shortLabel(peakEntry.label,period):'—'}</div><div class="ms">${peakEntry?fc(peakEntry.value):''}</div></div>
-    <div class="met b"><div class="ml">Top category</div><div class="mv" style="font-size:13px">${catSlices.length?[...catSlices].sort((a,b)=>b.value-a.value)[0].label:'—'}</div></div>
+
   </div>
   ${catSlices.length>1?`
   <div style="margin-bottom:14px">
@@ -785,7 +789,7 @@ function renderIncome(){
   <button onclick="showEditIncome(null)" style="width:100%;margin-bottom:14px;padding:11px;background:var(--g-bg);border:1.5px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:700;color:var(--brand-lite);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 2v10M2 7h10"/></svg>Add sale / income</button>
   <div class="ct">Income overview</div>
   <div class="mg" style="margin-bottom:14px">
-    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div><div class="ms">${db.incomes.length} sales</div></div>
+    <div class="met g"><div class="ml">Total income</div><div class="mv">${fc(total)}</div></div>
     <div class="met b"><div class="ml">Kg sold</div><div class="mv">${kg} kg</div></div>
     <div class="met a"><div class="ml">Avg price/kg</div><div class="mv">₹${avg.toLocaleString('en-IN')}</div></div>
     <div class="met ${netProfit>=0?'g':'r'}"><div class="ml">Net profit</div><div class="mv" style="font-size:15px">${fc(netProfit)}</div></div>
@@ -1006,7 +1010,7 @@ function renderForecast(){
 
   // ── EXPENSE CATEGORY DRIFT ────────────────────────────────────────────────────
   const cats=['labor','pesticide','rawmat','crop','other'];
-  const catColors={labor:'#d97706',pesticide:'#dc2626',rawmat:'#7c3aed',crop:'#059669',other:'#6b7280'};
+  const catColors={labor:'#e07b00',pesticide:'#c0392b',rawmat:'#2980b9',crop:'#27ae60',other:'#95a5a6'};
   const half=Math.ceil(allMos.length/2);
   const firstHalf=allMos.slice(0,half),secondHalf=allMos.slice(half);
   const sumCat=(mos,cat)=>mos.reduce((s,k)=>s+(expByMo[k]?.[cat]||0),0);
