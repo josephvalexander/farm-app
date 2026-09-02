@@ -182,24 +182,31 @@ async function writeNamedFile(id,name,content){
   return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
 }
 
-// In-memory sync lock — prevents any concurrent syncs within the same session
+// In-memory sync lock
 let _syncInFlight=false;
 let _lastSyncAttempt=0;
+let _pendingAutoSync=false;
+
+// autoSync — called after every CRUD operation. No rate limit for manual saves.
+function autoSync(){
+  if(_syncInFlight){_pendingAutoSync=true;return;}
+  if(!navigator.onLine){S.pendingSync=true;return;}
+  triggerSync(true); // treat as manual so no rate-limit
+}
 
 async function triggerSync(manual=false){
-  // Hard lock — only one sync at a time, ever
-  if(_syncInFlight){return;}
-  // Rate limit — no auto-sync within 60s of last attempt
+  if(_syncInFlight){if(manual)_pendingAutoSync=true;return;}
   if(!manual&&Date.now()-_lastSyncAttempt<60000){return;}
-  if(!navigator.onLine){if(manual){setSyncUI('err','Offline');setTimeout(()=>setSyncUI('idle','Sync'),2000);}S.pendingSync=true;return;}
+  if(!navigator.onLine){setSyncUI('offline');S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
   if(!manual&&!S.oauthToken&&!loadCachedToken()){return;}
   _syncInFlight=true;
+  _pendingAutoSync=false;
   _lastSyncAttempt=Date.now();
-  S.syncing=true;S.pendingSync=false;setSyncUI('syncing','Syncing…');
+  S.syncing=true;S.pendingSync=false;setSyncUI('syncing');
   const syncTimeout=setTimeout(()=>{
-    if(S.syncing){_syncInFlight=false;S.syncing=false;setSyncUI('err','Timed out — tap Sync to retry');setTimeout(()=>setSyncUI('idle','Sync'),4000);}
+    if(S.syncing){_syncInFlight=false;S.syncing=false;setSyncUI('err');setTimeout(()=>setSyncUI('idle'),4000);}
   },35000);
   try{
     await getOAuthToken();
@@ -255,11 +262,11 @@ async function triggerSync(manual=false){
           const res=await writeFile(null,enc);
           if(!res?.id)throw new Error('File creation returned no ID');
           cfg.driveFileId=res.id;cfg.lastSyncTs=Date.now();saveCfg();saveLocal();
-          setSyncUI('ok','Synced ✓');
+          setSyncUI('ok');
           clearTimeout(syncTimeout);
           _syncInFlight=false;
           S.syncing=false;
-          setTimeout(()=>setSyncUI('idle','Sync'),2000);
+          setTimeout(()=>setSyncUI('idle'),2000);
           syncGeminiKey();
           syncInsights();
           setTimeout(()=>{
@@ -289,12 +296,12 @@ async function triggerSync(manual=false){
             cloud=JSON.parse(trimmed);
             showToast('Migrated unencrypted data — re-encrypting now');
           }catch(e2){
-            setSyncUI('err','Corrupt file — use Reset Drive in Settings');
-            clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),5000);return;
+            setSyncUI('err');
+            clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle'),5000);return;
           }
         } else {
-          setSyncUI('err','Wrong passphrase — check Settings');
-          clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle','Sync'),5000);return;
+          setSyncUI('err');
+          clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle'),5000);return;
         }
       }
       // Rotate backups before overwriting (fire and forget)
@@ -303,7 +310,7 @@ async function triggerSync(manual=false){
       const enc=await encrypt(db,normPP(cfg.passphrase));
       await writeFile(file.id,enc);
       cfg.lastSyncTs=Date.now();saveCfg();
-      setSyncUI('ok','Synced ✓');
+      setSyncUI('ok');
       render();
     }
     // Load Gemini key and shared insights in background after sync
@@ -319,17 +326,19 @@ async function triggerSync(manual=false){
     console.error('Sync error:',e);
     const msg=e.message||'';
     if(msg.toLowerCase().includes('passphrase')||msg.toLowerCase().includes('decrypt')){
-      setSyncUI('err','Wrong passphrase');
+      setSyncUI('err');
     } else if(msg.toLowerCase().includes('network')||msg.toLowerCase().includes('fetch')){
-      setSyncUI('err','Network error — retry');
+      setSyncUI('err');
     } else {
-      setSyncUI('err','Sync failed — retry');
+      setSyncUI('err');
     }
   } finally {
     clearTimeout(syncTimeout);
     _syncInFlight=false;
     S.syncing=false;
-    setTimeout(()=>setSyncUI('idle','Sync'),3000);
+    if(!S.syncing)setTimeout(()=>setSyncUI('idle'),2000);
+    // If a CRUD save was queued while we were syncing, fire it now
+    if(_pendingAutoSync){_pendingAutoSync=false;setTimeout(()=>autoSync(),1000);}
   }
 }
 
@@ -370,11 +379,12 @@ function mergeDb(local,cloud){
   };
 }
 
-function setSyncUI(state,label){
-  const btn=document.getElementById('sync-btn'),lbl=document.getElementById('sync-label');
+function setSyncUI(state){
+  const btn=document.getElementById('sync-btn');
   if(!btn)return;
-  btn.className='sync-btn'+(state==='syncing'?' syncing':state==='err'?' err':state==='ok'?' ok':'');
-  lbl.textContent=label;
+  btn.className='sync-btn'+(state==='syncing'?' syncing':state==='err'?' err':state==='ok'?' ok':state==='offline'?' offline':'');
+  btn.title={syncing:'Syncing…',err:'Sync failed — tap to retry',ok:'Saved to Drive ✓',offline:'Offline — tap to retry',idle:'Sync'}[state]||'Sync';
+  if(state==='ok')setTimeout(()=>setSyncUI('idle'),2000);
 }
 
 // ── AUTO-SYNC & NETWORK ───────────────────────────────────────────────────────
@@ -384,25 +394,284 @@ function updateOnlineDot(){
 }
 window.addEventListener('online',()=>{
   updateOnlineDot();
+  updateOfflineBanner();
   if(S.pendingSync)triggerSync(false);
 });
-window.addEventListener('offline',updateOnlineDot);
+window.addEventListener('offline',()=>{updateOnlineDot();updateOfflineBanner();});
 
-// Auto-sync on open — only attempt if we already have a cached token.
-// On iOS PWA, requesting a new token without user gesture causes a silent hang.
-// If no token cached, just show idle state — user taps Sync when ready.
+// ── STARTUP AUTH FLOW ────────────────────────────────────────────────────────
+// On load: if valid token cached → pull Drive silently → show app
+//          if no token → show auth screen → user signs in or skips
 window.addEventListener('load',()=>{
   updateOnlineDot();
+  updateOfflineBanner();
   const hasToken=!!loadCachedToken();
-  if(hasToken){
-    // Token in hand — wait for Google API then sync silently
+  if(hasToken&&navigator.onLine){
+    // Token cached → silent startup sync then show app
+    showAuthScreen('loading');
     waitForGoogle()
-      .then(()=>triggerSync(false))
-      .catch(()=>{}); // Google API unavailable — skip, don't show error
+      .then(()=>startupSync())
+      .catch(()=>{hideAuthScreen();});
+  } else if(!hasToken&&navigator.onLine){
+    // No token → show auth screen
+    showAuthScreen('signin');
+  } else {
+    // Offline — go straight to local data
+    hideAuthScreen();
+    showOfflineBanner();
   }
-  // No else — if no token, stay idle. User taps Sync to authenticate.
 });
 
+// ── STARTUP SYNC (Drive as SOR) ──────────────────────────────────────────────
+async function startupSync(){
+  try{
+    await getOAuthToken();
+    let file=null;
+    if(cfg.driveFileId){
+      try{
+        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed`);
+        if(chk.ok){const j=await chk.json().catch(()=>null);if(j?.id&&!j.trashed)file={id:cfg.driveFileId};}
+        else cfg.driveFileId=null;
+      }catch(e){cfg.driveFileId=null;}
+    }
+    if(!file)file=await findFile();
+
+    if(file){
+      const raw=await readFile(file.id);
+      let cloud;
+      try{cloud=await decryptWithVariants(raw,normPP(cfg.passphrase));}
+      catch(e){
+        // Wrong passphrase or no passphrase set — go to app, user can set in settings
+        hideAuthScreen();
+        return;
+      }
+      // Drive-as-SOR: find conflicts between local changes since last sync and cloud
+      const lastSync=cfg.lastSyncTs||0;
+      const conflicts=findConflicts(db,cloud,lastSync);
+      if(conflicts.length>0){
+        hideAuthScreen();
+        resolveConflicts(conflicts,cloud);
+      } else {
+        // No conflicts — merge with Drive as base (option C: local-only changes win)
+        const localOnly={
+          yields:db.yields.filter(y=>(y.updatedAt||0)>lastSync),
+          expenses:db.expenses.filter(e=>(e.updatedAt||0)>lastSync),
+          incomes:db.incomes.filter(i=>(i.updatedAt||0)>lastSync),
+          workers:(db.workers||[]).filter(w=>(w.updatedAt||0)>lastSync),
+          sections:db.sections.filter(s=>(s.updatedAt||0)>lastSync),
+        };
+        db=mergeDb(cloud,db); // cloud as base, local on top
+        // Re-apply truly local-only records
+        ['yields','expenses','incomes','workers','sections'].forEach(k=>{
+          if(localOnly[k]?.length){
+            const ids=new Set(localOnly[k].map(r=>r.id));
+            const base=db[k].filter(r=>!ids.has(r.id));
+            db[k]=[...base,...localOnly[k]].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+          }
+        });
+        saveLocal();
+        cfg.driveFileId=file.id;
+        // Write merged result back
+        const enc=await encrypt(db,normPP(cfg.passphrase));
+        await writeFile(file.id,enc);
+        cfg.lastSyncTs=Date.now();saveCfg();
+        syncGeminiKey();syncInsights();
+        setTimeout(()=>cleanupDrive().catch(()=>{}),3000);
+        hideAuthScreen();
+      }
+    } else {
+      // No Drive file — create fresh from local
+      hideAuthScreen();
+      setTimeout(()=>triggerSync(true),500);
+    }
+  }catch(e){
+    hideAuthScreen(); // fail open
+  }
+}
+
+// Find conflicts: same record modified in both local and cloud since lastSync
+function findConflicts(local,cloud,lastSync){
+  const conflicts=[];
+  const arrays=['yields','expenses','incomes','workers','sections'];
+  arrays.forEach(k=>{
+    const cloudMap={};
+    (cloud[k]||[]).forEach(r=>cloudMap[r.id]=r);
+    (local[k]||[]).forEach(localRec=>{
+      const cloudRec=cloudMap[localRec.id];
+      if(!cloudRec)return; // local-only, no conflict
+      const localNewer=(localRec.updatedAt||0)>lastSync;
+      const cloudNewer=(cloudRec.updatedAt||0)>lastSync;
+      if(localNewer&&cloudNewer&&localRec.updatedAt!==cloudRec.updatedAt){
+        conflicts.push({type:k,localRec,cloudRec,
+          localDate:new Date(localRec.updatedAt).toLocaleString('en-IN'),
+          cloudDate:new Date(cloudRec.updatedAt).toLocaleString('en-IN')});
+      }
+    });
+  });
+  return conflicts;
+}
+
+// Show conflicts one at a time
+let _pendingConflicts=[];
+let _conflictCloud=null;
+function resolveConflicts(conflicts,cloud){
+  _pendingConflicts=[...conflicts];
+  _conflictCloud=cloud;
+  showNextConflict();
+}
+function showNextConflict(){
+  if(_pendingConflicts.length===0){
+    // All resolved — save and write back
+    saveLocal();
+    if(_conflictCloud){
+      encrypt(db,normPP(cfg.passphrase)).then(enc=>{
+        if(cfg.driveFileId)writeFile(cfg.driveFileId,enc);
+        cfg.lastSyncTs=Date.now();saveCfg();
+      });
+    }
+    _conflictCloud=null;
+    render();
+    return;
+  }
+  const c=_pendingConflicts[0];
+  const typeLabel={yields:'Harvest',expenses:'Expense',incomes:'Income',workers:'Workers',sections:'Section'}[c.type]||c.type;
+  const desc=c.localRec.date?'on '+c.localRec.date:'';
+  modal(`
+<div style="background:var(--a-bg);border:1px solid var(--a-bor);border-radius:var(--rs);padding:12px;margin-bottom:14px">
+  <div style="font-size:12px;font-weight:700;color:var(--a-tx);margin-bottom:4px">⚠️ Conflict detected</div>
+  <div style="font-size:12px;color:var(--a-mid)">${typeLabel} record ${desc} was edited on two devices since last sync.</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+  <div style="background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);padding:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--b-tx);margin-bottom:6px">Drive version</div>
+    <div style="font-size:11px;color:var(--tx2)">${formatRecordSummary(c.cloudRec,c.type)}</div>
+    <div style="font-size:10px;color:var(--tx3);margin-top:4px">${c.cloudDate}</div>
+  </div>
+  <div style="background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);padding:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--g-tx);margin-bottom:6px">This device</div>
+    <div style="font-size:11px;color:var(--tx2)">${formatRecordSummary(c.localRec,c.type)}</div>
+    <div style="font-size:10px;color:var(--tx3);margin-top:4px">${c.localDate}</div>
+  </div>
+</div>
+<div style="font-size:11px;color:var(--tx3);margin-bottom:12px">${_pendingConflicts.length} conflict${_pendingConflicts.length>1?'s':''} remaining</div>
+<div class="btn-row">
+  <button class="btnc" onclick="applyConflictChoice('cloud')">Keep Drive</button>
+  <button class="btnp" onclick="applyConflictChoice('local')">Keep this device</button>
+</div>`,'Sync conflict');
+}
+function applyConflictChoice(choice){
+  const c=_pendingConflicts.shift();
+  if(c){
+    const winner=choice==='local'?c.localRec:c.cloudRec;
+    const arr=db[c.type];
+    const idx=arr.findIndex(r=>r.id===winner.id);
+    if(idx>=0)arr[idx]=winner;else arr.push(winner);
+  }
+  closeModal();
+  showNextConflict();
+}
+function formatRecordSummary(rec,type){
+  if(type==='yields')return`${rec.qty||0} kg · ${rec.date||''}`;
+  if(type==='expenses')return`${fc(rec.amount||0)} · ${rec.category||''} · ${rec.date||''}`;
+  if(type==='incomes')return`${rec.qty||0}kg @ ₹${rec.pricePerKg||0} · ${rec.date||''}`;
+  if(type==='workers')return`M:${rec.male||0} F:${rec.female||0} B:${rec.bengali||0} · ${rec.date||''}`;
+  if(type==='sections')return`${rec.name||''} · ${rec.plants||0} plants`;
+  return JSON.stringify(rec).slice(0,60);
+}
+
+// ── OFFLINE BANNER ────────────────────────────────────────────────────────────
+function updateOfflineBanner(){
+  const existing=document.getElementById('offline-banner');
+  if(!navigator.onLine){
+    if(!existing){
+      const b=document.createElement('div');
+      b.id='offline-banner';
+      b.style.cssText='background:var(--a-bg);border-bottom:1px solid var(--a-bor);padding:8px 16px;font-size:12px;color:var(--a-tx);display:flex;align-items:center;gap:6px;font-family:-apple-system,sans-serif';
+      b.innerHTML='<svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l16 16M8.5 4.5A9 9 0 0118 14M1.5 6A9 9 0 004 9M12 12a4 4 0 00-5.5-5.5"/></svg> Offline — changes saved locally, will sync when connected';
+      const content=document.getElementById('main-content');
+      if(content)content.before(b);
+    }
+  } else {
+    if(existing)existing.remove();
+  }
+}
+function showOfflineBanner(){updateOfflineBanner();}
+
+// ── AUTH SCREEN ────────────────────────────────────────────────────────────────
+function showAuthScreen(mode){
+  let el=document.getElementById('auth-screen');
+  if(!el){
+    el=document.createElement('div');
+    el.id='auth-screen';
+    el.style.cssText='position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;background:var(--page)';
+    document.body.appendChild(el);
+  }
+  if(mode==='loading'){
+    el.innerHTML=`
+    <div style="text-align:center;padding:40px 24px">
+      <div style="width:72px;height:72px;background:#14532d;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+        <svg width="36" height="36" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <path d="M50 78 Q32 52 28 22 Q46 34 48 58 Q50 34 72 22 Q68 52 50 78Z" fill="#4ade80"/>
+          <line x1="50" y1="78" x2="30" y2="24" stroke="#c89a30" stroke-width="5" stroke-linecap="round"/>
+          <line x1="50" y1="78" x2="70" y2="24" stroke="#c89a30" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div style="font-size:22px;font-weight:700;color:var(--tx);margin-bottom:4px">V-Plantations</div>
+      <div style="font-size:14px;color:var(--tx3);margin-bottom:32px">Cardamom Estate · Idukki</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;color:var(--tx3);font-size:13px">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="animation:spin 1s linear infinite"><path d="M4 10a6 6 0 0110.5-4M16 10a6 6 0 01-10.5 4"/></svg>
+        Loading your data…
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML=`
+    <div style="text-align:center;padding:40px 24px;max-width:360px;width:100%">
+      <div style="width:72px;height:72px;background:#14532d;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+        <svg width="36" height="36" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <path d="M50 78 Q32 52 28 22 Q46 34 48 58 Q50 34 72 22 Q68 52 50 78Z" fill="#4ade80"/>
+          <line x1="50" y1="78" x2="30" y2="24" stroke="#c89a30" stroke-width="5" stroke-linecap="round"/>
+          <line x1="50" y1="78" x2="70" y2="24" stroke="#c89a30" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div style="font-size:26px;font-weight:700;color:var(--tx);margin-bottom:4px">V-Plantations</div>
+      <div style="font-size:14px;color:var(--tx3);margin-bottom:8px">Cardamom Estate · Idukki</div>
+      <div style="font-size:12px;color:var(--tx3);margin-bottom:40px">Sign in to sync your farm data across all devices</div>
+      <button onclick="doGoogleSignIn()" style="width:100%;padding:14px;background:#14532d;color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px">
+        <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#fff"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#d4e8d0"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#c8e6c9"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#e8f5e9"/></svg>
+        Sign in with Google
+      </button>
+      <button onclick="skipAuth()" style="width:100%;padding:12px;background:none;color:var(--tx3);border:1px solid var(--bor2);border-radius:12px;font-size:14px;cursor:pointer;font-family:inherit">
+        Work offline
+      </button>
+      <div style="font-size:11px;color:var(--tx3);margin-top:16px;line-height:1.5">Your data is encrypted and only accessible with your passphrase</div>
+    </div>`;
+  }
+}
+function hideAuthScreen(){
+  const el=document.getElementById('auth-screen');
+  if(el){el.style.opacity='0';el.style.transition='opacity 0.3s';setTimeout(()=>el.remove(),300);}
+  render();
+}
+
+async function doGoogleSignIn(){
+  const btn=document.querySelector('#auth-screen button');
+  if(btn){btn.disabled=true;btn.textContent='Signing in…';}
+  try{
+    await waitForGoogle();
+    await getOAuthToken();
+    showAuthScreen('loading');
+    await startupSync();
+  }catch(e){
+    showAuthScreen('signin');
+    showToast('Sign in failed — try again');
+  }
+}
+function skipAuth(){
+  hideAuthScreen();
+  showOfflineBanner();
+}
+
+// ── AUTO-SYNC ─────────────────────────────────────────────────────────────────
 // Auto-sync every 5 mins
 setInterval(()=>{if(!document.hidden)triggerSync(false);},AUTO_SYNC_INTERVAL);
 

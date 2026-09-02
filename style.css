@@ -258,22 +258,22 @@ body {
 .online-dot.on { background: var(--brand-glow); }
 
 .sync-btn {
-  display: flex; align-items: center; gap: 5px;
+  display: flex; align-items: center; justify-content: center;
   background: rgba(255,255,255,0.12);
   border: 1px solid rgba(255,255,255,0.18);
-  border-radius: var(--rp);
-  padding: 6px 12px;
-  font-size: 11px; font-weight: 600;
+  border-radius: 50%;
+  width: 34px; height: 34px;
   color: var(--hdr-tx);
   cursor: pointer;
-  white-space: nowrap;
   font-family: inherit;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
-.sync-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+.sync-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 .sync-btn.syncing svg { animation: spin 1s linear infinite; }
-.sync-btn.err  { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.4); color: #fca5a5; }
-.sync-btn.ok   { background: rgba(74,222,128,0.18); border-color: rgba(74,222,128,0.3); color: #86efac; }
+.sync-btn.err     { background: rgba(239,68,68,0.3); border-color: rgba(239,68,68,0.5); color: #fca5a5; }
+.sync-btn.ok      { background: rgba(74,222,128,0.25); border-color: rgba(74,222,128,0.4); color: #86efac; }
+.sync-btn.offline { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── BOTTOM NAV ── */

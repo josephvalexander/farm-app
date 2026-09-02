@@ -49,7 +49,7 @@ function saveSection(id){
   const data={name,plants:parseInt(document.getElementById('f-sp').value)||0,plantType:document.getElementById('f-spt').value||'Njallani',age:parseInt(document.getElementById('f-sa').value)||0,notes:document.getElementById('f-sno').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.sections.findIndex(x=>x.id===id);if(i>=0)db.sections[i]={...db.sections[i],...data};}
   else db.sections.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 // SEASON — removed
@@ -105,7 +105,7 @@ function saveHarvest(yieldId){
   const existingIncome=db.incomes.findIndex(i=>i.linkedYieldId===finalYieldId);
   if(existingIncome>=0)db.incomes[existingIncome]={...db.incomes[existingIncome],...iData};
   else db.incomes.push({id:uid(),createdAt:Date.now(),...iData});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 // YIELD (standalone — kept for non-sale harvests, accessible from Records tab)
@@ -126,7 +126,7 @@ function saveYield(id){
   const data={sectionId:document.getElementById('f-ys').value||null,date:document.getElementById('f-yd').value,qty,labourers:parseFloat(document.getElementById('f-yl').value)||null,updatedAt:Date.now()};
   if(id){const i=db.yields.findIndex(x=>x.id===id);if(i>=0)db.yields[i]={...db.yields[i],...data};}
   else db.yields.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 // EXPENSE
@@ -151,7 +151,7 @@ function saveExpense(id){
   const data={category:document.getElementById('f-ec').value,desc,amount,date:document.getElementById('f-edt').value,sectionId:document.getElementById('f-es').value||null,updatedAt:Date.now()};
   if(id){const i=db.expenses.findIndex(x=>x.id===id);if(i>=0)db.expenses[i]={...db.expenses[i],...data};}
   else db.expenses.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 // INCOME — note: price NOT prefilled
@@ -183,7 +183,7 @@ function saveIncome(id){
   const data={date:document.getElementById('f-id').value,qty,pricePerKg,type:document.getElementById('f-ity').value,buyer:document.getElementById('f-ib').value.trim(),sectionId:document.getElementById('f-is').value||null,notes:document.getElementById('f-ino').value.trim(),updatedAt:Date.now()};
   if(id){const i=db.incomes.findIndex(x=>x.id===id);if(i>=0)db.incomes[i]={...db.incomes[i],...data};}
   else db.incomes.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 // MARKET PRICE
@@ -204,7 +204,7 @@ function savePrice(){
   db.priceRaw=r;
   db.priceDate=new Date().toISOString().slice(0,10);
   if(!db.priceSource||db.priceSource.startsWith('Auto'))db.priceSource='Manual entry';
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 
@@ -271,7 +271,7 @@ function saveWorker(id){
   if(!db.workers)db.workers=[];
   if(id){const i=db.workers.findIndex(x=>x.id===id);if(i>=0)db.workers[i]={...db.workers[i],...data};}
   else db.workers.push({id:uid(),createdAt:Date.now(),...data});
-  saveLocal();closeModal();render();setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();autoSync();
 }
 
 function showEditWorkerRate(){
@@ -294,7 +294,7 @@ function saveWorkerRate(){
   const current=currentWorkerRate();
   if(current.male===male&&current.female===female&&current.bengali===bengali){showToast('Rates unchanged');closeModal();return;}
   db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now()});
-  saveLocal();closeModal();render();showToast('Rates updated from '+today);setTimeout(()=>triggerSync(false),2000);
+  saveLocal();closeModal();render();showToast('Rates updated from '+today);autoSync();
 }
 
 // SHARED FOLDER SETUP
@@ -371,7 +371,7 @@ function renderSettings(){
     ${r.male||r.female||r.bengali?`<div style="display:flex;gap:16px"><div><div style="font-size:10px;color:var(--tx3)">Male</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.male}</div></div><div><div style="font-size:10px;color:var(--tx3)">Female</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.female}</div></div><div><div style="font-size:10px;color:var(--tx3)">Bengali</div><div style="font-size:16px;font-weight:600;color:var(--tx)">₹${r.bengali}</div></div></div>`:'<p style="font-size:12px;color:var(--a-mid)">No rates set</p>'}
   </div>
   ${wRateHistory.length>1?`<div style="padding:10px 16px">${wRateHistory.map(h=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bor);font-size:12px"><span style="color:var(--tx2)">${h.effectiveFrom}</span><span style="color:var(--tx3)">M ₹${h.male} · F ₹${h.female} · B ₹${h.bengali}</span></div>`).join('')}</div>`:''}`;
-  const buyersContent=`<div style="padding:12px 16px"><p style="font-size:12px;color:var(--tx3);margin-bottom:10px">Buyers appear as a dropdown when adding a sale. Shared across all devices.</p>${(db.buyers||[]).map((b,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bor)"><span style="font-size:13px;color:var(--tx)">${esc(b)}</span><button onclick="db.buyers.splice(${i},1);saveLocal();triggerSync(false);render()" style="font-size:11px;color:var(--r-tx);background:var(--r-bg);border:1px solid var(--r-bor);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Remove</button></div>`).join('')}<button onclick="const n=prompt('Buyer name:');if(n&&n.trim()&&!db.buyers.includes(n.trim())){db.buyers.push(n.trim());saveLocal();triggerSync(false);render();}" style="width:100%;margin-top:10px;padding:10px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">+ Add buyer</button></div>`;
+  const buyersContent=`<div style="padding:12px 16px"><p style="font-size:12px;color:var(--tx3);margin-bottom:10px">Buyers appear as a dropdown when adding a sale. Shared across all devices.</p>${(db.buyers||[]).map((b,i)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bor)"><span style="font-size:13px;color:var(--tx)">${esc(b)}</span><button onclick="db.buyers.splice(${i},1);saveLocal();autoSync();render()" style="font-size:11px;color:var(--r-tx);background:var(--r-bg);border:1px solid var(--r-bor);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">Remove</button></div>`).join('')}<button onclick="const n=prompt('Buyer name:');if(n&&n.trim()&&!db.buyers.includes(n.trim())){db.buyers.push(n.trim());saveLocal();autoSync();render();}" style="width:100%;margin-top:10px;padding:10px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">+ Add buyer</button></div>`;
   const displayContent=`<div class="settings-row" style="border-bottom:none"><div class="settings-row-label" id="theme-setting-label">Theme</div><div style="display:flex;gap:5px"><button onclick="setThemePref('light')" id="tbtn-light" class="ia">☀️</button><button onclick="setThemePref('system')" id="tbtn-system" class="ia">Auto</button><button onclick="setThemePref('dark')" id="tbtn-dark" class="ia">🌙</button></div></div>`;
   const a2hsContent=`<div style="padding:12px 16px"><div id="a2hs-content"><div style="background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--b-tx);margin-bottom:6px">iPhone / iPad (Safari)</div><ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Safari → tap Share</li><li>Tap "Add to Home Screen" → Add</li></ol></div><div style="background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);padding:12px;margin-bottom:8px"><div style="font-size:12px;font-weight:600;color:var(--brand-lite);margin-bottom:6px">Android (Chrome)</div><ol style="margin:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.8"><li>Open in Chrome → tap ⋮ menu</li><li>Tap "Add to Home screen" → Add</li></ol></div><div id="a2hs-btn-wrap" style="display:none"><button id="a2hs-btn" onclick="triggerA2HS()" style="width:100%;padding:11px;background:var(--g-bg);border:1px solid var(--g-bor);border-radius:var(--rs);font-size:13px;font-weight:600;color:var(--brand-lite);cursor:pointer;font-family:inherit">＋ Add to home screen</button></div></div></div>`;
   const dataContent=`<div style="padding:12px 16px"><p style="font-size:12px;color:var(--tx3);margin-bottom:10px">${counts}</p><div style="display:flex;gap:8px"><button onclick="exportJSON()" style="flex:1;padding:10px;background:var(--b-bg);border:1px solid var(--b-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--b-tx);cursor:pointer;font-family:inherit">Export JSON</button><button onclick="document.getElementById('import-file').click()" style="flex:1;padding:10px;background:var(--a-bg);border:1px solid var(--a-bor);border-radius:var(--rs);font-size:12px;font-weight:600;color:var(--a-mid);cursor:pointer;font-family:inherit">Import JSON</button></div><input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)"/></div>`;
@@ -640,11 +640,9 @@ window.addEventListener('appinstalled',()=>{
   _a2hsPrompt=null;
 });
 
-render();
+// Auth flow handles initial render — drive.js window.load fires after all scripts
+// so render() here is a fallback in case auth screen isn't shown
 updateFabVisibility();
-// Single startup insights init — initInsights handles caching + debounce
-if(S.tab==='dashboard') initInsights();
 scheduleInsightsFetch();
-  schedulePriceFetch();
-  // Attempt price fetch on load (respects 12h rate limit)
-  setTimeout(()=>fetchCardamomPrice(false),8000);
+schedulePriceFetch();
+setTimeout(()=>fetchCardamomPrice(false),8000);
