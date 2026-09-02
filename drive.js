@@ -353,7 +353,15 @@ function mergeDb(local,cloud){
     for(const id of delIds)delete m[id];
     return Object.values(m).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   }
-  const newer=cloud.updatedAt>local.updatedAt;
+  // Compare prices by their own updatedAt, not db.updatedAt
+  const localPriceTs=local.priceUpdatedAt||0;
+  const cloudPriceTs=cloud.priceUpdatedAt||0;
+  const cloudPriceNewer=cloudPriceTs>localPriceTs;
+  // Use non-null values when one side has no price
+  const pickPrice=(lv,cv)=>{
+    if(cloudPriceNewer)return cv!==null&&cv!==undefined?cv:lv;
+    return lv!==null&&lv!==undefined?lv:cv;
+  };
   return{
     sections:ml(local.sections,cloud.sections),
     seasons:ml(local.seasons||[],cloud.seasons||[]),
@@ -363,17 +371,26 @@ function mergeDb(local,cloud){
     dryings:ml(local.dryings||[],cloud.dryings||[]),
     buyers:[...new Set([...(local.buyers||[]),...(cloud.buyers||[])])],
     workers:ml(local.workers||[],cloud.workers||[]),
-    workerRates:ml(local.workerRates||[],cloud.workerRates||[]),
+    // workerRates: merge by id (last-write-wins), then deduplicate same effectiveFrom — keep most recently updated
+    workerRates:(()=>{
+      const merged=ml(local.workerRates||[],cloud.workerRates||[]);
+      const byDate={};
+      merged.forEach(r=>{
+        if(!byDate[r.effectiveFrom]||(r.updatedAt||r.createdAt||0)>(byDate[r.effectiveFrom].updatedAt||byDate[r.effectiveFrom].createdAt||0))
+          byDate[r.effectiveFrom]=r;
+      });
+      return Object.values(byDate).sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+    })(),
     priceHistory:(()=>{
-      // Merge by date, keep most recent entry per date
       const all=[...(local.priceHistory||[]),...(cloud.priceHistory||[])];
       const byDate={};all.forEach(p=>{if(!byDate[p.date]||p.fetchedAt>byDate[p.date].fetchedAt)byDate[p.date]=p;});
-      return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-60); // keep last 60 days
+      return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-60);
     })(),
-    priceRaw:newer?cloud.priceRaw:local.priceRaw,
-    priceDried:newer?cloud.priceDried:local.priceDried,
-    priceDate:newer?cloud.priceDate:local.priceDate,
-    priceSource:newer?cloud.priceSource:local.priceSource,
+    priceRaw:pickPrice(local.priceRaw,cloud.priceRaw),
+    priceDried:pickPrice(local.priceDried,cloud.priceDried),
+    priceDate:pickPrice(local.priceDate,cloud.priceDate),
+    priceSource:pickPrice(local.priceSource,cloud.priceSource),
+    priceUpdatedAt:Math.max(localPriceTs,cloudPriceTs)||undefined,
     deletedIds:[...delIds],
     updatedAt:Math.max(local.updatedAt||0,cloud.updatedAt||0)
   };

@@ -69,7 +69,7 @@ function showEditHarvest(id){
   <div style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Sale details</div>
   <div class="fg"><label class="fl">Price per kg (₹) <span style="color:var(--r-tx)">*</span></label><input id="f-hp" type="number" step="0.5" value="${pairedIncome?.pricePerKg||''}" placeholder="Enter sale price"/></div>
   <div class="fg"><label class="fl">Buyer <span style="color:var(--r-tx)">*</span></label>
-    <select id="f-hb" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();triggerSync(false);this.outerHTML='<select id=\'f-hb\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
+    <select id="f-hb" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();autoSync();this.outerHTML='<select id=\'f-hb\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
       ${buyerOpts(pairedIncome?.buyer||'')}
     </select>
   </div>
@@ -165,7 +165,7 @@ function showEditIncome(id){
 <select id="f-ity"><option value="raw" ${(i?.type||'raw')==='raw'?'selected':''}>Raw / green cardamom</option><option value="dried" ${i?.type==='dried'?'selected':''}>Dried cardamom</option></select>
 </div>
 <div class="fg"><label class="fl">Buyer / market <span style="color:var(--r-tx)">*</span></label>
-  <select id="f-ib" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();triggerSync(false);this.outerHTML='<select id=\'f-ib\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
+  <select id="f-ib" onchange="if(this.value==='__new__'){const n=prompt('Enter buyer name:');if(n&&n.trim()){if(!db.buyers.includes(n.trim()))db.buyers.push(n.trim());saveLocal();autoSync();this.outerHTML='<select id=\'f-ib\'>'+buyerOpts(n.trim())+'</select>';}else{this.value='';}}">
     ${buyerOpts(i?.buyer||'')}
   </select>
 </div>
@@ -203,6 +203,7 @@ function savePrice(){
   if(!r){el.style.borderColor='var(--r-tx)';el.focus();return;}
   db.priceRaw=r;
   db.priceDate=new Date().toISOString().slice(0,10);
+  db.priceUpdatedAt=Date.now();
   if(!db.priceSource||db.priceSource.startsWith('Auto'))db.priceSource='Manual entry';
   saveLocal();closeModal();render();autoSync();
 }
@@ -290,10 +291,15 @@ function saveWorkerRate(){
   if(!male&&!female&&!bengali){showToast('Enter at least one rate');return;}
   if(!db.workerRates)db.workerRates=[];
   const today=new Date().toISOString().slice(0,10);
-  // Only create new entry if rates actually changed or no entry exists
   const current=currentWorkerRate();
   if(current.male===male&&current.female===female&&current.bengali===bengali){showToast('Rates unchanged');closeModal();return;}
-  db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now()});
+  // Overwrite if an entry already exists for today — don't create duplicates
+  const todayIdx=db.workerRates.findIndex(r=>r.effectiveFrom===today);
+  if(todayIdx>=0){
+    db.workerRates[todayIdx]={...db.workerRates[todayIdx],male,female,bengali,updatedAt:Date.now()};
+  } else {
+    db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now()});
+  }
   saveLocal();closeModal();render();showToast('Rates updated from '+today);autoSync();
 }
 
@@ -428,7 +434,7 @@ function importJSON(input){
   input.value='';
 }
 function doImport(){
-  try{if(!_pendingImport)return;db={...db,..._pendingImport};_pendingImport=null;saveLocal();closeModal();render();showToast('Data imported successfully');}
+  try{if(!_pendingImport)return;db={...db,..._pendingImport};_pendingImport=null;saveLocal();closeModal();render();autoSync();showToast('Data imported — syncing to Drive');}
   catch(e){showToast('Import failed');}
 }
 
@@ -500,7 +506,7 @@ async function doRestore(fileId){
     // Load the backup
     const raw=await readFile(fileId);
     const data=await decrypt(raw,cfg.passphrase);
-    db={...db,...data};saveLocal();render();
+    db={...db,...data};saveLocal();render();autoSync();
     showToast('Restored successfully ✓');
   }catch(e){showToast('Restore failed: '+e.message);}
 }

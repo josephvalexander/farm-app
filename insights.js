@@ -326,6 +326,7 @@ Use found:false if no recent price found. avg and max must be plain integers lik
     db.priceDried=parsed.avg;
     db.priceDate=parsed.date;
     db.priceSource='cardamom.farm';
+    db.priceUpdatedAt=Date.now();
     saveLocal();
     triggerSync(false);
     if(S.tab==='dashboard')render();
