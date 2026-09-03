@@ -73,6 +73,58 @@ async function getOAuthToken(){
   });
 }
 
+// ── SYNC DIAGNOSTICS (mobile-friendly popup) ─────────────────────────────────
+async function showSyncDiagnostics(){
+  const lines=[];
+  lines.push('=== SYNC DIAGNOSTICS ===');lines.push('');
+  lines.push('Passphrase: '+(cfg.passphrase?'SET ('+cfg.passphrase.length+' chars)':'NOT SET'));
+  lines.push('Shared folder: '+(cfg.sharedFolderId||'NOT SET'));
+  lines.push('Client ID: '+(cfg.clientId?cfg.clientId.slice(0,20)+'…':'NOT SET'));
+  lines.push('Cached file ID: '+(cfg.driveFileId||'none'));
+  lines.push('OAuth token: '+(S.oauthToken?'in memory':loadCachedToken()?'in session':'NONE'));
+  lines.push('Last sync: '+(cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'never'));
+  lines.push('Local records: '+db.yields.length+' yield, '+db.expenses.length+' exp, '+db.sections.length+' sections');
+  lines.push('Online: '+navigator.onLine);
+  lines.push('');
+
+  // Try Drive API
+  try{
+    const tok=S.oauthToken||loadCachedToken();
+    if(!tok){lines.push('TOKEN: none — tap Sync to authenticate first');}
+    else{
+      lines.push('TOKEN: present');
+      const folder=cfg.sharedFolderId;
+      const q=folder
+        ?`name='vplantations_data.enc' and '${folder}' in parents and trashed=false`
+        :`name='vplantations_data.enc' and trashed=false`;
+      lines.push('Search query: '+q.slice(0,80));
+      const r=await fetch(
+        `https://www.googleapis.com/drive/v3/files?spaces=drive&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`,
+        {headers:{Authorization:'Bearer '+tok}}
+      );
+      const d=await r.json();
+      if(d.error){
+        lines.push('DRIVE ERROR: '+d.error.message+' ('+d.error.code+')');
+      } else {
+        lines.push('Files found: '+(d.files?.length||0));
+        (d.files||[]).forEach((f,i)=>{
+          lines.push('  ['+i+'] '+f.id+' ('+Math.round((f.size||0)/1024)+'KB, '+new Date(f.modifiedTime).toLocaleDateString('en-IN')+')');
+        });
+        if((d.files||[]).length===0){
+          lines.push('');
+          lines.push('WHY NO FILE?');
+          if(!folder)lines.push('• No shared folder ID set');
+          else lines.push('• File not in folder '+folder.slice(0,20)+'… or not shared with this account');
+        }
+      }
+    }
+  }catch(e){lines.push('API call failed: '+e.message);}
+
+  // Show in modal
+  const txt=lines.join('\n');
+  modal('<div style="font-family:monospace;font-size:11px;background:var(--sur2);border-radius:var(--rs);padding:12px;white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow-y:auto;line-height:1.7">'+esc(txt)+'</div><div class=\"btn-row\" style=\"margin-top:12px\"><button class=\"btnc\" onclick=\"closeModal()\">Close</button><button class=\"btnp\" onclick=\"navigator.clipboard&&navigator.clipboard.writeText(this.getAttribute(\'data-txt\')).then(()=>showToast(\'Copied ✓\'))\" data-txt=\"'+esc(txt)+'\">Copy</button></div>','Sync diagnostics');
+}
+
 // Call this to force sign-out and re-pick account
 function disconnectGoogle(){
   clearCachedToken();
