@@ -336,8 +336,11 @@ function saveSharedFolderId(){
 
 function showPassphraseSetup(){
   modal(`
-<div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the same passphrase. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Write it down and share with family.</strong></p></div>
-<div class="fg"><label class="fl">Passphrase (min 6 characters)</label><div style="display:flex;gap:6px;align-items:center"><input id="pp-in" type="password" autocomplete="new-password" style="flex:1"/><button type="button" onclick="const i=document.getElementById('pp-in');i.type=i.type==='password'?'text':'password'" style="padding:6px 10px;font-size:11px;background:var(--sur2);border:1px solid var(--bor2);border-radius:6px;cursor:pointer;font-family:inherit;color:var(--tx2)">Show</button></div></div>
+<div class="sbox"><h3>Set encryption passphrase</h3><p>All users must use the <strong>exact same passphrase</strong>. Data is encrypted before uploading — Google cannot read it.</p><p><strong>Tip: use a simple word — avoid special characters that mobile keyboards may auto-correct.</strong></p></div>
+<div class="fg"><label class="fl">Passphrase (min 6 characters)</label>
+  <input id="pp-in" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="font-family:monospace;letter-spacing:0.05em" placeholder="Enter passphrase"/>
+</div>
+<p style="font-size:11px;color:var(--tx3);margin-top:-8px">Shown as plain text — autocorrect disabled to prevent mismatches between devices.</p>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="savePassphrase()">Save &amp; sync</button></div>`,'Encryption setup');
 }
 function savePassphrase(){const v=normPP(document.getElementById('pp-in').value);if(!v||v.length<6){alert('Passphrase must be at least 6 characters');return;}cfg.passphrase=v;saveCfg();closeModal();triggerSync(true);}
@@ -369,7 +372,7 @@ function renderSettings(){
   <div class="settings-row"><div><div class="settings-row-label">Shared folder</div><div class="settings-row-sub">${cfg.sharedFolderId?'Connected ✓':'Not set'}</div></div><button onclick="showSharedFolderSetup()" class="ia e">${cfg.sharedFolderId?'Change':'Set up'}</button></div>
   <div class="settings-row"><div><div class="settings-row-label">Passphrase</div><div class="settings-row-sub" id="pp-display">${cfg.passphrase?'Set ✓ — tap to reveal':'Not set'}</div></div><div style="display:flex;gap:6px;align-items:center">${cfg.passphrase?`<button onclick="const el=document.getElementById('pp-display');el.textContent=el.textContent.startsWith('Set')?'${cfg.passphrase.replace(/'/g,"\'")}':'Set ✓ — tap to reveal'" style="font-size:11px;color:var(--b-tx);background:var(--b-bg);border:1px solid var(--b-bor);border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit">Reveal</button>`:''}<button onclick="showChangePassphrase()" class="ia e">Change</button></div></div>
   <div class="settings-row"><div><div class="settings-row-label">Google Client ID</div><div class="settings-row-sub">${cfg.clientId?cfg.clientId.slice(0,28)+'…':'Not set'}</div></div><button onclick="showClientIdSetup()" class="ia e">Change</button></div>
-  <div class="settings-row" style="border-bottom:none"><div><div class="settings-row-label">Last synced</div><div class="settings-row-sub">${lastSync}</div></div><div style="display:flex;gap:5px"><button onclick="showSyncDiagnostics()" class="ia" title="Debug sync issues">🔍</button><button onclick="manualBackup()" class="ia e">Snapshot</button><button onclick="showBackups()" class="ia e">Restore</button></div></div>`;
+  <div class="settings-row" style="border-bottom:none"><div><div class="settings-row-label">Last synced</div><div class="settings-row-sub">${lastSync}</div></div><div style="display:flex;gap:5px"><button onclick="showSyncDiagnostics()" class="ia" title="Debug sync issues">🔍</button><button onclick="cfg.driveFileId=null;saveCfg();triggerSync(true);showToast('Force syncing from Drive…')" class="ia e">Force pull</button><button onclick="manualBackup()" class="ia e">Snapshot</button><button onclick="showBackups()" class="ia e">Restore</button></div></div>`;
   const aiContent=`<div class="settings-row" style="border-bottom:none"><div><div class="settings-row-label">Gemini API key</div><div class="settings-row-sub">${S.geminiKey?S.geminiKey.slice(0,8)+'… (stored in Drive)':'Not set — needed for insights'}</div></div><button onclick="showGeminiKeySetup()" class="ia e">${S.geminiKey?'Change':'Set up'}</button></div>`;
   const wrContent=`
   <div style="padding:12px 16px;border-bottom:1px solid var(--bor)">
@@ -514,16 +517,21 @@ async function doRestore(fileId){
 // CHANGE PASSPHRASE
 function showChangePassphrase(){
   modal(`
-<div class="sbox"><h3>Change passphrase</h3><p>All devices must update to the new passphrase before syncing, or they will get a "Wrong passphrase" error.</p></div>
-<div class="fg"><label class="fl">Current passphrase</label><input id="pp-old" type="password"/></div>
-<div class="fg"><label class="fl">New passphrase (min 6 chars)</label><input id="pp-new" type="password"/></div>
+<div class="sbox"><h3>Change passphrase</h3><p>All devices must use the <strong>exact same passphrase</strong>. Tip: use a simple memorable word or phrase — avoid special characters that keyboards may auto-correct.</p></div>
+<div class="fg"><label class="fl">Current passphrase</label>
+  <div style="display:flex;gap:6px"><input id="pp-old" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:1;font-family:monospace"/></div>
+</div>
+<div class="fg"><label class="fl">New passphrase (min 6 chars)</label>
+  <div style="display:flex;gap:6px"><input id="pp-new" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:1;font-family:monospace"/></div>
+</div>
+<p style="font-size:11px;color:var(--tx3)">Shown as plain text to avoid autocorrect issues on mobile.</p>
 <div class="btn-row"><button class="btnc" onclick="closeModal()">Cancel</button><button class="btnp" onclick="doChangePassphrase()">Change &amp; re-sync</button></div>`,'Change passphrase');
 }
 async function doChangePassphrase(){
-  const oldPP=document.getElementById('pp-old').value;
-  const newPP=document.getElementById('pp-new').value.trim();
+  const oldPP=normPP(document.getElementById('pp-old').value);
+  const newPP=normPP(document.getElementById('pp-new').value);
   if(!oldPP||!newPP||newPP.length<6){showToast('Fill both fields (min 6 chars)');return;}
-  if(oldPP!==cfg.passphrase){showToast('Current passphrase is incorrect');return;}
+  if(oldPP!==normPP(cfg.passphrase)){showToast('Current passphrase is incorrect');return;}
   if(!navigator.onLine){showToast('Need internet to re-encrypt Drive file');return;}
   closeModal();showToast('Re-encrypting…');
   try{
@@ -532,7 +540,7 @@ async function doChangePassphrase(){
     if(file){
       const raw=await readFile(file.id);
       let data;
-      try{data=await decrypt(raw,oldPP);}catch(e){showToast('Could not decrypt with old passphrase');return;}
+      try{data=await decryptWithVariants(raw,oldPP);}catch(e){showToast('Could not decrypt with old passphrase');return;}
       const enc=await encrypt(data,newPP);
       await writeFile(file.id,enc);
     }

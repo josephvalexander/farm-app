@@ -80,13 +80,16 @@ applyTheme();
 function normPP(pp){
   if(!pp)return pp;
   return pp
-    .replace(/[‘’]/g,"'")   // smart single quotes → straight
-    .replace(/[“”]/g,'"')   // smart double quotes → straight
-    .replace(/[ ​‌‍﻿]/g,'') // non-breaking & zero-width spaces
+    .replace(/[‘’‚′`]/g,"'")  // smart single quotes
+    .replace(/[“”„‟″«»]/g,'"') // smart double quotes
+    .replace(/[–—]/g,'-')           // em/en dash
+    .replace(/ /g,' ')                   // non-breaking space
+    .replace(/[​‌‍‎‏﻿⁠]/g,'') // zero-width
+    .replace(/…/g,'...')                 // ellipsis
     .trim();
 }
 
-// Generate all plausible variants of a passphrase to handle iOS autocorrect
+// All plausible variants — handles mobile autocorrect, caps, spacing quirks
 function ppVariants(pp){
   if(!pp)return[];
   const n=normPP(pp);
@@ -94,10 +97,15 @@ function ppVariants(pp){
     pp,
     n,
     pp.trim(),
+    n.toUpperCase(),
+    n.toLowerCase(),
     n.charAt(0).toUpperCase()+n.slice(1),
     n.charAt(0).toLowerCase()+n.slice(1),
     pp.charAt(0).toUpperCase()+pp.trim().slice(1),
     pp.charAt(0).toLowerCase()+pp.trim().slice(1),
+    n.replace(/\s+/g,' '),
+    pp.replace(/\s+/g,' ').trim(),
+    n.replace(/\s/g,''),
   ]);
   return [...variants].filter(Boolean);
 }
