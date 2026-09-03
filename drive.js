@@ -101,7 +101,7 @@ async function showSyncDiagnostics(){
         :`name='vplantations_data.enc' and trashed=false`;
       lines.push('Search query: '+q.slice(0,80));
       const r=await fetch(
-        `https://www.googleapis.com/drive/v3/files?spaces=drive&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`,
+        `https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`,
         {headers:{Authorization:'Bearer '+tok}}
       );
       const d=await r.json();
@@ -164,42 +164,43 @@ async function driveFetch(path,opts={}){
   const tok=await getOAuthToken();
   return fetch('https://www.googleapis.com/'+path,{...opts,headers:{Authorization:'Bearer '+tok,...(opts.headers||{})}});
 }
+// Drive search params — includeItemsFromAllDrives is required for shared files
+// Without it, non-owners cannot find files they have editor access to
+const DRIVE_SEARCH_PARAMS='supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives';
+
 async function findFile(){
   const folder=cfg.sharedFolderId;
   const q=folder
     ?`name='${DRIVE_FILE}' and '${folder}' in parents and trashed=false`
     :`name='${DRIVE_FILE}' and trashed=false`;
-  const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
+  const r=await driveFetch(`drive/v3/files?${DRIVE_SEARCH_PARAMS}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
   if(!r.ok)return null;
   const d=await r.json();
-  const files=(d.files||[]).filter(f=>parseInt(f.size||0)>10); // skip empty/0KB
+  const files=(d.files||[]).filter(f=>parseInt(f.size||0)>10);
   if(!files.length)return null;
-  files.sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0)); // largest first
+  files.sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0));
   if(files.length>1)setTimeout(()=>cleanupDrive().catch(()=>{}),2000);
   return files[0];
 }
 
-// Find ALL data files (for trying multiple on decrypt fail)
 async function findAllFiles(){
   const folder=cfg.sharedFolderId;
   const q=folder
     ?`name='${DRIVE_FILE}' and '${folder}' in parents and trashed=false`
     :`name='${DRIVE_FILE}' and trashed=false`;
-  const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
+  const r=await driveFetch(`drive/v3/files?${DRIVE_SEARCH_PARAMS}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
   if(!r.ok)return[];
   const d=await r.json();
   return(d.files||[]).filter(f=>parseInt(f.size||0)>10).sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0));
 }
-async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media`)).text();}
+async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media&supportsAllDrives=true`)).text();}
 async function writeFile(id,content){
   const parents=id?undefined:(cfg.sharedFolderId?[cfg.sharedFolderId]:['appDataFolder']);
   const meta={name:DRIVE_FILE,parents};
   const form=new FormData();
   form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
   form.append('file',new Blob([content],{type:'text/plain'}));
-  const res=await(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
+  const res=await(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart&supportsAllDrives=true`:`upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`,{method:id?'PATCH':'POST',body:form})).json();
   // On new file creation, copy permissions from parent folder so all members can access it
   if(!id&&res?.id&&cfg.sharedFolderId){
     try{
@@ -228,8 +229,7 @@ async function findNamedFile(name){
   const q=folder
     ?`name='${name}' and '${folder}' in parents and trashed=false`
     :`name='${name}' and trashed=false`;
-  const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`);
+  const r=await driveFetch(`drive/v3/files?${DRIVE_SEARCH_PARAMS}&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)&orderBy=modifiedTime desc`);
   const d=await r.json();
   const files=d.files||[];
   // Auto-delete duplicates — keep most recent, delete the rest silently
@@ -246,8 +246,7 @@ async function deleteAllNamed(name){
   const q=folder
     ?`name='${name}' and '${folder}' in parents and trashed=false`
     :`name='${name}' and trashed=false`;
-  const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  const r=await driveFetch(`drive/v3/files?${DRIVE_SEARCH_PARAMS}&q=${encodeURIComponent(q)}&fields=files(id,name,size)`);
   const d=await r.json();
   const files=d.files||[];
   await Promise.all(files.map(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{})));
@@ -264,7 +263,7 @@ async function cleanupDrive(){
       ?`name='${name}' and '${folder}' in parents and trashed=false`
       :`name='${name}' and trashed=false`;
     const spaces=folder?'drive':'appDataFolder';
-    const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)&orderBy=modifiedTime desc`);
+    const r=await driveFetch(`drive/v3/files?${DRIVE_SEARCH_PARAMS}&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)&orderBy=modifiedTime desc`);
     const d=await r.json();
     const files=d.files||[];
     // Delete 0KB/empty files first (corrupted placeholders)
@@ -343,7 +342,7 @@ async function triggerSync(manual=false){
     // 1. Verify cached file ID directly (O(1), no search, no consistency issues)
     if(cfg.driveFileId){
       try{
-        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed,size`);
+        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed,size&supportsAllDrives=true`);
         if(chk.ok){
           const j=await chk.json().catch(()=>null);
           // Reject if trashed OR empty (0KB = corrupt/placeholder)
