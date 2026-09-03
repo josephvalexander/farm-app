@@ -3,7 +3,10 @@
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const APP_VERSION='__VERSION__'; // replaced at deploy time — or just increment manually
 const DB_KEY='vp_data_v1', CFG_KEY='vp_config_v1';
-const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive.file';
+const DRIVE_FILE='vplantations_data.enc', SCOPES='https://www.googleapis.com/auth/drive';
+// If cached token was issued with old drive.file scope, clear it
+// so user re-auths with the new broader drive scope
+(()=>{try{const raw=sessionStorage.getItem('vp_oauth_token');if(raw){const {scope}=JSON.parse(raw)||{};if(scope&&scope!==SCOPES){sessionStorage.removeItem('vp_oauth_token');}}}catch(e){}})();
 const BACKUP_FILES=['vplantations_bak1.enc','vplantations_bak2.enc','vplantations_bak3.enc'];
 const CID_PH='YOUR_GOOGLE_CLIENT_ID_HERE';
 const AUTO_SYNC_INTERVAL=15*60*1000; // 15min — reduces Drive write race window

@@ -21,7 +21,7 @@ function loadCachedToken(){
 }
 function saveTokenToSession(token){
   try{
-    sessionStorage.setItem(TOKEN_SS_KEY,JSON.stringify({token,expiry:Date.now()+TOKEN_TTL}));
+    sessionStorage.setItem(TOKEN_SS_KEY,JSON.stringify({token,expiry:Date.now()+TOKEN_TTL,scope:SCOPES}));
   }catch(e){}
 }
 function clearCachedToken(){
@@ -100,48 +100,30 @@ async function showSyncDiagnostics(){
         ?`name='vplantations_data.enc' and '${folder}' in parents and trashed=false`
         :`name='vplantations_data.enc' and trashed=false`;
       lines.push('Search query: '+q.slice(0,80));
-      const r=await fetch(
-        `https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`,
-        {headers:{Authorization:'Bearer '+tok}}
-      );
-      const d=await r.json();
-      if(d.error){
-        lines.push('DRIVE ERROR: '+d.error.message+' ('+d.error.code+')');
-      } else {
-        lines.push('Files found: '+(d.files?.length||0));
-        (d.files||[]).forEach((f,i)=>{
-          lines.push('  ['+i+'] '+f.id+' ('+Math.round((f.size||0)/1024)+'KB, '+new Date(f.modifiedTime).toLocaleDateString('en-IN')+')');
-        });
-        // Try to decrypt largest file and show contents
-        const realFiles=(d.files||[]).filter(f=>parseInt(f.size||0)>10).sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0));
-        if(realFiles.length>0&&cfg.passphrase){
-          lines.push('');
-          lines.push('Passphrase char codes: '+[...normPP(cfg.passphrase)].map(c=>c.charCodeAt(0)).join('-'));
-          try{
-            const raw=await(await fetch(`https://www.googleapis.com/drive/v3/files/${realFiles[0].id}?alt=media`,{headers:{Authorization:'Bearer '+tok}})).text();
-            lines.push('File size: '+raw.length+' chars');
-            try{
-              const dec=await decryptWithVariants(raw,normPP(cfg.passphrase));
-              lines.push('DECRYPT: ✓ OK');
-              lines.push('Yields: '+(dec.yields||[]).length);
-              lines.push('Expenses: '+(dec.expenses||[]).length);
-              lines.push('Sections: '+(dec.sections||[]).length);
-              lines.push('Workers: '+(dec.workers||[]).length);
-              lines.push('Buyers: '+JSON.stringify(dec.buyers||[]));
-              lines.push('Worker rates: '+(dec.workerRates||[]).length+' entries');
-              (dec.workerRates||[]).forEach(r=>lines.push('  '+r.effectiveFrom+': M'+r.male+' F'+r.female+' B'+r.bengali));
-            }catch(de){
-              lines.push('DECRYPT: FAILED — '+de.message);
-              lines.push('(passphrase mismatch between devices)');
-            }
-          }catch(fe){lines.push('File read failed: '+fe.message);}
-        }
-        if((d.files||[]).length===0){
-          lines.push('');
-          lines.push('WHY NO FILE?');
-          if(!folder)lines.push('• No shared folder ID set');
-          else lines.push('• File not in folder or not shared with this account');
-        }
+
+      // Try 3 different search approaches to find what works
+      const searches=[
+        ['with corpora=allDrives',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`],
+        ['with corpora=user',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=user&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`],
+        ['no corpora (default)',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)`],
+        ['folder contents',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&q=${encodeURIComponent(`'${folder}' in parents and trashed=false`)}&fields=files(id,name,size,modifiedTime)&pageSize=20`],
+      ];
+      let foundFile=null;
+      for(const [label,url] of searches){
+        try{
+          const r2=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
+          const d2=await r2.json();
+          const count=d2.files?.length||0;
+          lines.push(`Search [${label}]: ${count} files${d2.error?' ERR:'+d2.error.message:''}`);
+          (d2.files||[]).forEach(f=>lines.push(`  ${f.name} (${f.size||0}B) id:${f.id?.slice(0,20)}`));
+          if(count>0&&!foundFile)foundFile=d2.files[0];
+        }catch(e){lines.push(`Search [${label}]: exception ${e.message}`);}
+      }
+
+      const d={files:foundFile?[foundFile]:[]};
+      if(d.files.length===0){
+        lines.push('');lines.push('All searches returned 0 files.');
+        if(!folder)lines.push('• No shared folder ID set');
       }
     }
   }catch(e){lines.push('API call failed: '+e.message);}

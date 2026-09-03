@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>V-Plantations Drive Diagnostic</title>
+<style>
+body{font-family:-apple-system,sans-serif;padding:16px;background:#f5f5f5;margin:0}
+h2{color:#14532d;margin:0 0 16px}
+input,textarea{width:100%;padding:10px;font-size:14px;border:1px solid #ccc;border-radius:8px;box-sizing:border-box;margin-bottom:10px;font-family:monospace}
+button{width:100%;padding:14px;background:#14532d;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:8px}
+button.sec{background:#fff;color:#14532d;border:1px solid #14532d}
+pre{background:#1e1e1e;color:#4ade80;padding:14px;border-radius:8px;font-size:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow-y:auto}
+.err{color:#f87171}
+.ok{color:#4ade80}
+.warn{color:#fbbf24}
+label{font-size:12px;color:#555;display:block;margin-bottom:3px}
+</style>
+</head>
+<body>
+<h2>🌿 Drive Diagnostic</h2>
+<p style="font-size:12px;color:#666;margin-bottom:16px">Enter settings from the app. This page bypasses the service worker cache.</p>
+
+<label>Google Client ID</label>
+<input id="cid" type="text" placeholder="354922792601-…apps.googleusercontent.com" autocorrect="off" autocapitalize="off"/>
+
+<label>Shared Folder ID</label>
+<input id="fid" type="text" placeholder="1JRK5Nuk2TlRxVqEP5FsNf0Ae1fhpkKol" autocorrect="off" autocapitalize="off"/>
+
+<label>Passphrase (to test decryption)</label>
+<input id="pp" type="text" placeholder="your passphrase" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+
+<button onclick="runDiag()">Run Diagnostic</button>
+<button class="sec" onclick="document.getElementById('out').textContent=''">Clear</button>
+
+<pre id="out">Results will appear here…</pre>
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+let tok=null;
+const log=(msg,cls='')=>{
+  const el=document.getElementById('out');
+  el.innerHTML+=`<span class="${cls}">${msg}</span>\n`;
+  el.scrollTop=el.scrollHeight;
+};
+
+async function getToken(clientId){
+  return new Promise((res,rej)=>{
+    const check=setInterval(()=>{
+      if(typeof google!=='undefined'&&google.accounts){
+        clearInterval(check);
+        const client=google.accounts.oauth2.initTokenClient({
+          client_id:clientId,
+          scope:'https://www.googleapis.com/auth/drive',
+          callback:(r)=>{if(r.error)rej(new Error(r.error));else res(r.access_token);}
+        });
+        client.requestAccessToken({prompt:'select_account'});
+      }
+    },200);
+    setTimeout(()=>{clearInterval(check);rej(new Error('Google API timeout'));},15000);
+  });
+}
+
+async function driveGet(url,token){
+  const r=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+  const text=await r.text();
+  try{return JSON.parse(text);}catch(e){return{_raw:text,_status:r.status};}
+}
+
+async function runDiag(){
+  const cid=document.getElementById('cid').value.trim();
+  const fid=document.getElementById('fid').value.trim();
+  const pp=document.getElementById('pp').value;
+  document.getElementById('out').innerHTML='';
+
+  if(!cid){log('❌ Client ID is required','err');return;}
+  if(!fid){log('❌ Folder ID is required','err');return;}
+
+  log('=== V-PLANTATIONS DRIVE DIAGNOSTIC ===');
+  log('Client ID: '+cid.slice(0,30)+'…');
+  log('Folder ID: '+fid);
+  log('Passphrase length: '+(pp?pp.length+' chars':'NOT SET'));
+  log('');
+
+  // Step 1: Get OAuth token
+  log('Step 1: Getting OAuth token…');
+  try{
+    tok=await getToken(cid);
+    log('✓ Token obtained','ok');
+  }catch(e){log('❌ Auth failed: '+e.message,'err');return;}
+
+  // Step 2: Verify folder access
+  log('\nStep 2: Checking folder access…');
+  const folderInfo=await driveGet(
+    `https://www.googleapis.com/drive/v3/files/${fid}?fields=id,name,permissions&supportsAllDrives=true`,
+    tok
+  );
+  if(folderInfo.error){
+    log('❌ Cannot access folder: '+folderInfo.error.message+' ('+folderInfo.error.code+')','err');
+    log('→ Either folder ID is wrong or this account has no access','warn');
+  }else{
+    log('✓ Folder accessible: '+folderInfo.name,'ok');
+  }
+
+  // Step 3: List folder contents directly
+  log('\nStep 3: Listing folder contents (direct)…');
+  const contents=await driveGet(
+    `https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&q=${encodeURIComponent(`'${fid}' in parents and trashed=false`)}&fields=files(id,name,size,owners,modifiedTime)&pageSize=20`,
+    tok
+  );
+  if(contents.error){
+    log('❌ Folder listing failed: '+contents.error.message,'err');
+  }else if(!contents.files?.length){
+    log('⚠ Folder is empty or no files visible to this account','warn');
+  }else{
+    log(`✓ Found ${contents.files.length} file(s) in folder:`,'ok');
+    contents.files.forEach(f=>{
+      log(`  📄 ${f.name} | ${f.size||0} bytes | ${f.id} | owner: ${f.owners?.[0]?.emailAddress||'?'}`);
+    });
+  }
+
+  // Step 4: Search for data file specifically
+  log('\nStep 4: Searching for vplantations_data.enc…');
+  const searches=[
+    ['corpora=allDrives',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&q=${encodeURIComponent(`name='vplantations_data.enc' and '${fid}' in parents and trashed=false`)}&fields=files(id,name,size)`],
+    ['corpora=user',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=user&q=${encodeURIComponent(`name='vplantations_data.enc' and '${fid}' in parents and trashed=false`)}&fields=files(id,name,size)`],
+    ['no corpora',`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&includeItemsFromAllDrives=true&q=${encodeURIComponent(`name='vplantations_data.enc' and '${fid}' in parents and trashed=false`)}&fields=files(id,name,size)`],
+  ];
+  let dataFileId=null;
+  for(const [label,url] of searches){
+    const d=await driveGet(url,tok);
+    if(d.error){log(`  [${label}] ❌ ${d.error.message}`,'err');}
+    else{
+      const n=d.files?.length||0;
+      log(`  [${label}] ${n>0?'✓':'⚠'} ${n} file(s)`,n>0?'ok':'warn');
+      if(n>0&&!dataFileId)dataFileId=d.files[0].id;
+    }
+  }
+
+  // Also check from folder listing
+  const fromFolder=(contents.files||[]).find(f=>f.name==='vplantations_data.enc'&&parseInt(f.size||0)>10);
+  if(fromFolder&&!dataFileId){
+    dataFileId=fromFolder.id;
+    log('  [folder listing] ✓ Found via direct folder list','ok');
+  }
+
+  // Step 5: Try to read and decrypt
+  if(dataFileId&&pp){
+    log('\nStep 5: Testing decryption…');
+    log('Passphrase char codes: '+[...pp].map(c=>c.charCodeAt(0)).join('-'));
+    try{
+      const raw=await fetch(`https://www.googleapis.com/drive/v3/files/${dataFileId}?alt=media&supportsAllDrives=true`,{headers:{Authorization:'Bearer '+tok}}).then(r=>r.text());
+      log('File content length: '+raw.length+' chars');
+      log('First 40 chars: '+raw.slice(0,40));
+      // Try decrypt
+      try{
+        const buf=Uint8Array.from(atob(raw.replace(/\s/g,'')),c=>c.charCodeAt(0));
+        const salt=buf.slice(0,16),iv=buf.slice(16,28),ct=buf.slice(28);
+        const ppBytes=new TextEncoder().encode(pp.trim());
+        const km=await crypto.subtle.importKey('raw',ppBytes,'PBKDF2',false,['deriveKey']);
+        const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
+        const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+        const data=JSON.parse(new TextDecoder().decode(pt));
+        log('✓ DECRYPT SUCCESS','ok');
+        log('  Sections: '+(data.sections||[]).length);
+        log('  Yields: '+(data.yields||[]).length);
+        log('  Expenses: '+(data.expenses||[]).length);
+        log('  Buyers: '+JSON.stringify(data.buyers||[]));
+        log('  Worker rates: '+(data.workerRates||[]).length);
+      }catch(de){
+        log('❌ DECRYPT FAILED: '+de.message,'err');
+        log('→ Passphrase on this device does not match what encrypted the file','warn');
+        log('→ Try common variants:','warn');
+        const variants=[pp.trim(),pp.trim().toLowerCase(),pp.trim().toUpperCase(),pp.trim().charAt(0).toUpperCase()+pp.trim().slice(1)];
+        for(const v of variants){
+          try{
+            const buf=Uint8Array.from(atob(raw.replace(/\s/g,'')),c=>c.charCodeAt(0));
+            const salt=buf.slice(0,16),iv=buf.slice(16,28),ct=buf.slice(28);
+            const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(v),'PBKDF2',false,['deriveKey']);
+            const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
+            await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+            log(`  ✓ Variant works: "${v}" (chars: ${[...v].map(c=>c.charCodeAt(0)).join('-')})`,'ok');
+          }catch(e){}
+        }
+      }
+    }catch(e){log('❌ File read failed: '+e.message,'err');}
+  }else if(!pp){
+    log('\nStep 5: Skipped — no passphrase entered','warn');
+  }else{
+    log('\nStep 5: Skipped — no data file found','warn');
+  }
+
+  log('\n=== DONE ===');
+}
+</script>
+</body>
+</html>
