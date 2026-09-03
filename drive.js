@@ -84,6 +84,8 @@ async function showSyncDiagnostics(){
   lines.push('OAuth token: '+(S.oauthToken?'in memory':loadCachedToken()?'in session':'NONE'));
   lines.push('Last sync: '+(cfg.lastSyncTs?new Date(cfg.lastSyncTs).toLocaleString('en-IN'):'never'));
   lines.push('Local records: '+db.yields.length+' yield, '+db.expenses.length+' exp, '+db.sections.length+' sections');
+  lines.push('Local buyers: '+JSON.stringify(db.buyers||[]));
+  lines.push('Local worker rates: '+(db.workerRates||[]).length+' entries');
   lines.push('Online: '+navigator.onLine);
   lines.push('');
 
@@ -110,11 +112,35 @@ async function showSyncDiagnostics(){
         (d.files||[]).forEach((f,i)=>{
           lines.push('  ['+i+'] '+f.id+' ('+Math.round((f.size||0)/1024)+'KB, '+new Date(f.modifiedTime).toLocaleDateString('en-IN')+')');
         });
+        // Try to decrypt largest file and show contents
+        const realFiles=(d.files||[]).filter(f=>parseInt(f.size||0)>10).sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0));
+        if(realFiles.length>0&&cfg.passphrase){
+          lines.push('');
+          lines.push('Passphrase char codes: '+[...normPP(cfg.passphrase)].map(c=>c.charCodeAt(0)).join('-'));
+          try{
+            const raw=await(await fetch(`https://www.googleapis.com/drive/v3/files/${realFiles[0].id}?alt=media`,{headers:{Authorization:'Bearer '+tok}})).text();
+            lines.push('File size: '+raw.length+' chars');
+            try{
+              const dec=await decryptWithVariants(raw,normPP(cfg.passphrase));
+              lines.push('DECRYPT: ✓ OK');
+              lines.push('Yields: '+(dec.yields||[]).length);
+              lines.push('Expenses: '+(dec.expenses||[]).length);
+              lines.push('Sections: '+(dec.sections||[]).length);
+              lines.push('Workers: '+(dec.workers||[]).length);
+              lines.push('Buyers: '+JSON.stringify(dec.buyers||[]));
+              lines.push('Worker rates: '+(dec.workerRates||[]).length+' entries');
+              (dec.workerRates||[]).forEach(r=>lines.push('  '+r.effectiveFrom+': M'+r.male+' F'+r.female+' B'+r.bengali));
+            }catch(de){
+              lines.push('DECRYPT: FAILED — '+de.message);
+              lines.push('(passphrase mismatch between devices)');
+            }
+          }catch(fe){lines.push('File read failed: '+fe.message);}
+        }
         if((d.files||[]).length===0){
           lines.push('');
           lines.push('WHY NO FILE?');
           if(!folder)lines.push('• No shared folder ID set');
-          else lines.push('• File not in folder '+folder.slice(0,20)+'… or not shared with this account');
+          else lines.push('• File not in folder or not shared with this account');
         }
       }
     }
