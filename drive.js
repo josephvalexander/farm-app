@@ -199,7 +199,27 @@ async function writeFile(id,content){
   const form=new FormData();
   form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
   form.append('file',new Blob([content],{type:'text/plain'}));
-  return(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
+  const res=await(await driveFetch(id?`upload/drive/v3/files/${id}?uploadType=multipart`:`upload/drive/v3/files?uploadType=multipart`,{method:id?'PATCH':'POST',body:form})).json();
+  // On new file creation, copy permissions from parent folder so all members can access it
+  if(!id&&res?.id&&cfg.sharedFolderId){
+    try{
+      // Get folder permissions
+      const permRes=await driveFetch(`drive/v3/files/${cfg.sharedFolderId}/permissions?fields=permissions(id,role,type,emailAddress)`);
+      if(permRes.ok){
+        const {permissions=[]}=await permRes.json();
+        // Apply each non-owner permission to the new file
+        for(const p of permissions){
+          if(p.role==='owner')continue;
+          await driveFetch(`drive/v3/files/${res.id}/permissions`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({role:p.role,type:p.type,...(p.emailAddress?{emailAddress:p.emailAddress}:{})})
+          }).catch(()=>{});
+        }
+      }
+    }catch(e){} // permission copy is best-effort — don't fail the write
+  }
+  return res;
 }
 
 // ── SYNC ──────────────────────────────────────────────────────────────────────
