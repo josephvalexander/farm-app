@@ -153,6 +153,19 @@ async function findFile(){
   if(files.length>1)setTimeout(()=>cleanupDrive().catch(()=>{}),2000);
   return files[0];
 }
+
+// Find ALL data files (for trying multiple on decrypt fail)
+async function findAllFiles(){
+  const folder=cfg.sharedFolderId;
+  const q=folder
+    ?`name='${DRIVE_FILE}' and '${folder}' in parents and trashed=false`
+    :`name='${DRIVE_FILE}' and trashed=false`;
+  const spaces=folder?'drive':'appDataFolder';
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
+  if(!r.ok)return[];
+  const d=await r.json();
+  return(d.files||[]).filter(f=>parseInt(f.size||0)>10).sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0));
+}
 async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media`)).text();}
 async function writeFile(id,content){
   const parents=id?undefined:(cfg.sharedFolderId?[cfg.sharedFolderId]:['appDataFolder']);
@@ -318,6 +331,18 @@ async function triggerSync(manual=false){
       }
 
       if(!file){
+        // Last check — are there ANY files in the folder we missed?
+        // This prevents creating a duplicate when files exist but couldn't be decrypted
+        const anyExisting=await findAllFiles();
+        if(anyExisting.length>0){
+          // Files exist but couldn't be decrypted — passphrase mismatch
+          setSyncUI('err');
+          clearTimeout(syncTimeout);_syncInFlight=false;S.syncing=false;
+          setTimeout(()=>setSyncUI('idle'),5000);
+          showToast('Cannot read Drive data — check passphrase matches other devices');
+          if(_pendingAutoSync){_pendingAutoSync=false;}
+          return;
+        }
         // Set creation lock before any async work
         localStorage.setItem(CREATION_LOCK_KEY,Date.now().toString());
         try{
@@ -345,25 +370,31 @@ async function triggerSync(manual=false){
       }
     }
     if(file){
-      const raw=await readFile(file.id);
-      let cloud;
-      try{
-        cloud=await decryptWithVariants(raw,normPP(cfg.passphrase));
-      }catch(e){
-        console.error('[Sync] Decrypt failed:',e.message);
-        const trimmed=raw.trim();
-        if(trimmed.startsWith('{')||trimmed.startsWith('[')){
-          try{cloud=JSON.parse(trimmed);showToast('Migrated unencrypted data');}
-          catch(e2){setSyncUI('err');clearTimeout(syncTimeout);S.syncing=false;setTimeout(()=>setSyncUI('idle'),5000);return;}
-        } else {
-          // Wrong passphrase — show a clear message, don't just show error icon
-          setSyncUI('err');
-          clearTimeout(syncTimeout);S.syncing=false;
-          setTimeout(()=>setSyncUI('idle'),5000);
-          showToast('Wrong passphrase — check Settings → Sync & account');
-          return;
-        }
+      // Try all available files — in case the first one was encrypted by a different device
+      const allFiles=await findAllFiles();
+      let cloud=null;
+      let successFileId=null;
+      for(const candidate of allFiles){
+        const raw=await readFile(candidate.id);
+        try{
+          cloud=await decryptWithVariants(raw,normPP(cfg.passphrase));
+          successFileId=candidate.id;
+          break; // decrypted OK — use this file
+        }catch(e){continue;} // try next file
       }
+      if(!cloud){
+        // Could not decrypt any file — wrong passphrase
+        setSyncUI('err');
+        clearTimeout(syncTimeout);S.syncing=false;
+        setTimeout(()=>setSyncUI('idle'),5000);
+        showToast('Wrong passphrase — check Settings → Sync & account');
+        return;
+      }
+      // Use the file we successfully decrypted
+      if(successFileId&&successFileId!==cfg.driveFileId){
+        cfg.driveFileId=successFileId;saveCfg();
+      }
+      const raw=await readFile(successFileId);
       rotateBackups(raw);
 
       // ── FIRST-TIME SYNC FOR THIS DEVICE ──────────────────────────────────────
