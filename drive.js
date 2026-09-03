@@ -556,16 +556,19 @@ window.addEventListener('load',()=>{
   updateOfflineBanner();
   const hasToken=!!loadCachedToken();
   if(hasToken&&navigator.onLine){
-    // Token cached → silent startup sync then show app
     showAuthScreen('loading');
+    // Hard timeout — if startup takes more than 12s, show app anyway
+    const authTimeout=setTimeout(()=>{
+      hideAuthScreen();
+      showToast('Loading took too long — working with local data');
+    },12000);
     waitForGoogle()
       .then(()=>startupSync())
-      .catch(()=>{hideAuthScreen();});
+      .catch(()=>{})
+      .finally(()=>{clearTimeout(authTimeout);hideAuthScreen();});
   } else if(!hasToken&&navigator.onLine){
-    // No token → show auth screen
     showAuthScreen('signin');
   } else {
-    // Offline — go straight to local data
     hideAuthScreen();
     showOfflineBanner();
   }
@@ -815,21 +818,29 @@ function showAuthScreen(mode){
 }
 function hideAuthScreen(){
   const el=document.getElementById('auth-screen');
-  if(el){el.style.opacity='0';el.style.transition='opacity 0.3s';setTimeout(()=>el.remove(),300);}
+  if(el&&!el._hiding){
+    el._hiding=true;
+    el.style.opacity='0';
+    el.style.transition='opacity 0.3s';
+    setTimeout(()=>el.remove(),300);
+  }
   render();
 }
 
 async function doGoogleSignIn(){
   const btn=document.querySelector('#auth-screen button');
   if(btn){btn.disabled=true;btn.textContent='Signing in…';}
+  const authTimeout=setTimeout(()=>hideAuthScreen(),15000);
   try{
     await waitForGoogle();
     await getOAuthToken();
     showAuthScreen('loading');
     await startupSync();
   }catch(e){
-    showAuthScreen('signin');
-    showToast('Sign in failed — try again');
+    showToast('Sign in failed — working offline');
+  }finally{
+    clearTimeout(authTimeout);
+    hideAuthScreen();
   }
 }
 function skipAuth(){
