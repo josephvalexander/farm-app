@@ -144,8 +144,14 @@ async function findFile(){
     ?`name='${DRIVE_FILE}' and '${folder}' in parents and trashed=false`
     :`name='${DRIVE_FILE}' and trashed=false`;
   const spaces=folder?'drive':'appDataFolder';
-  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id)`);
-  const d=await r.json();return d.files?.[0]||null;
+  const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,size,modifiedTime)&orderBy=modifiedTime desc`);
+  if(!r.ok)return null;
+  const d=await r.json();
+  const files=(d.files||[]).filter(f=>parseInt(f.size||0)>10); // skip empty/0KB
+  if(!files.length)return null;
+  files.sort((a,b)=>parseInt(b.size||0)-parseInt(a.size||0)); // largest first
+  if(files.length>1)setTimeout(()=>cleanupDrive().catch(()=>{}),2000);
+  return files[0];
 }
 async function readFile(id){return(await driveFetch(`drive/v3/files/${id}?alt=media`)).text();}
 async function writeFile(id,content){
@@ -199,11 +205,16 @@ async function cleanupDrive(){
       ?`name='${name}' and '${folder}' in parents and trashed=false`
       :`name='${name}' and trashed=false`;
     const spaces=folder?'drive':'appDataFolder';
-    const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`);
+    const r=await driveFetch(`drive/v3/files?spaces=${spaces}&q=${encodeURIComponent(q)}&fields=files(id,name,size,modifiedTime)&orderBy=modifiedTime desc`);
     const d=await r.json();
     const files=d.files||[];
-    if(files.length>1){
-      const toDelete=files.slice(1);
+    // Delete 0KB/empty files first (corrupted placeholders)
+    const emptyFiles=files.filter(f=>parseInt(f.size||0)<=10);
+    await Promise.all(emptyFiles.map(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{})));
+    totalCleaned+=emptyFiles.length;
+    const realFiles=files.filter(f=>parseInt(f.size||0)>10);
+    if(realFiles.length>1){
+      const toDelete=realFiles.slice(1);
       await Promise.all(toDelete.map(f=>driveFetch(`drive/v3/files/${f.id}`,{method:'DELETE'}).catch(()=>{})));
       totalCleaned+=toDelete.length;
     }
@@ -273,10 +284,11 @@ async function triggerSync(manual=false){
     // 1. Verify cached file ID directly (O(1), no search, no consistency issues)
     if(cfg.driveFileId){
       try{
-        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed`);
+        const chk=await driveFetch(`drive/v3/files/${cfg.driveFileId}?fields=id,trashed,size`);
         if(chk.ok){
           const j=await chk.json().catch(()=>null);
-          if(j?.id&&!j.trashed){file={id:cfg.driveFileId};}
+          // Reject if trashed OR empty (0KB = corrupt/placeholder)
+          if(j?.id&&!j.trashed&&parseInt(j.size||0)>10)file={id:cfg.driveFileId};
           else{cfg.driveFileId=null;saveCfg();}
         }else{cfg.driveFileId=null;saveCfg();}
       }catch(e){cfg.driveFileId=null;saveCfg();}
