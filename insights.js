@@ -242,27 +242,25 @@ async function fetchCardamomPrice(force=false){
 
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
+  // Format as "04-Sep-2026" to match cardamom.farm display format
+  const todayDisplay=todayIST.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).replace(/ /g,'-');
 
-  const prompt=`Search cardamom.farm for today's (${todayStr}) cardamom auction results.
+  const prompt=`Search Google for: cardamom.farm auction price ${todayDisplay}
 
-cardamom.farm shows auction entries like:
-  04-Sep-2026
-  ₹2,516  — Header Systems, Nedumkandam
+Go to cardamom.farm and find the auction results for ${todayDisplay}.
+The page shows entries like:
+  ${todayDisplay}
+  ₹2,516
+  Header Systems, Nedumkandam
   Max price ₹3,513 · 76,378.5 kg quantity sold
 
-  04-Sep-2026
-  ₹2,354  — Mas Enterprises, Vandanmettu
-  Max price ₹3,837 · 85,161.6 kg quantity sold
+Extract each auction entry for ${todayDisplay} and return as JSON array.
+Each object needs: avg (the ₹ price shown, integer), max (Max price value, integer), qty (kg quantity sold, integer).
 
-Find ALL auction entries for the most recent date. For each entry extract:
-- avg: the large price number (e.g. 2516) — average price per kg in ₹
-- max: the "Max price" number (e.g. 3513)
-- qty: the "quantity sold" in kg (e.g. 76378)
+Return ONLY this JSON, no explanation:
+{"date":"${todayStr}","auctions":[{"avg":2516,"max":3513,"qty":76378},{"avg":2354,"max":3837,"qty":85161}],"found":true}
 
-Return ONLY valid JSON — an array of entries, no markdown:
-{"date":"YYYY-MM-DD","auctions":[{"avg":2516,"max":3513,"qty":76378},{"avg":2354,"max":3837,"qty":85161}],"found":true}
-
-If no data: {"date":"","auctions":[],"found":false}`;
+If cardamom.farm has no data for today: {"date":"","auctions":[],"found":false}`;
 
   try{
     // Try with web search tool first
