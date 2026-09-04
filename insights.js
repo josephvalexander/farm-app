@@ -245,26 +245,24 @@ async function fetchCardamomPrice(force=false){
 
   const prompt=`Search cardamom.farm for today's (${todayStr}) cardamom auction results.
 
-cardamom.farm shows multiple auction entries per day. Each entry looks like:
+cardamom.farm shows auction entries like:
   04-Sep-2026
-  ₹2,516  ← this is the AVERAGE PRICE per kg (use for weighted avg)
-  Auctioneer name, Location
-  Max price ₹3,513 · 76,378 kg quantity sold  ← quantity in kg, use as weight
+  ₹2,516  — Header Systems, Nedumkandam
+  Max price ₹3,513 · 76,378.5 kg quantity sold
 
-STEPS:
-1. Find all auction entries for the most recent date on cardamom.farm
-2. For each entry note: avg_price (₹/kg) and qty_sold (kg)
-3. Weighted average = sum(avg_price × qty_sold) / sum(qty_sold), round to integer
-4. Highest max price = maximum of all "Max price" values across entries
+  04-Sep-2026
+  ₹2,354  — Mas Enterprises, Vandanmettu
+  Max price ₹3,837 · 85,161.6 kg quantity sold
 
-CRITICAL: "quantity sold" is kg sold — NOT a price. Do not use it as a price.
-Example: avg=2516, qty=76378 and avg=2354, qty=85161
-Weighted avg = (2516×76378 + 2354×85161)/(76378+85161) = 2427
+Find ALL auction entries for the most recent date. For each entry extract:
+- avg: the large price number (e.g. 2516) — average price per kg in ₹
+- max: the "Max price" number (e.g. 3513)
+- qty: the "quantity sold" in kg (e.g. 76378)
 
-Return ONLY valid JSON, no markdown, no explanation:
-{"date":"YYYY-MM-DD","avg":INTEGER,"max":INTEGER,"found":true}
+Return ONLY valid JSON — an array of entries, no markdown:
+{"date":"YYYY-MM-DD","auctions":[{"avg":2516,"max":3513,"qty":76378},{"avg":2354,"max":3837,"qty":85161}],"found":true}
 
-If no data found: {"date":"","avg":0,"max":0,"found":false}`;
+If no data: {"date":"","auctions":[],"found":false}`;
 
   try{
     // Try with web search tool first
@@ -316,15 +314,29 @@ If no data found: {"date":"","avg":0,"max":0,"found":false}`;
       if(avgM&&dateM){parsed={found:true,date:dateM[1],avg:parseInt(avgM[1]),max:maxM?parseInt(maxM[1]):parseInt(avgM[1])};}
     }
 
+    // Handle new array format — calculate weighted avg in JS (never trust Gemini's arithmetic)
+    if(parsed?.auctions&&Array.isArray(parsed.auctions)&&parsed.auctions.length>0){
+      const validAuctions=parsed.auctions.filter(a=>a.avg>500&&a.avg<20000&&a.qty>0);
+      if(validAuctions.length>0){
+        // Weighted average by quantity sold
+        const totalQty=validAuctions.reduce((s,a)=>s+a.qty,0);
+        const weightedAvg=Math.round(validAuctions.reduce((s,a)=>s+a.avg*a.qty,0)/totalQty);
+        const highestMax=Math.max(...validAuctions.map(a=>a.max||a.avg));
+        // Sanity check max — if > 3× avg it's probably a quantity misread as price
+        const safeMax=highestMax<weightedAvg*3&&highestMax<20000?highestMax:weightedAvg;
+        parsed={found:true,date:parsed.date,avg:weightedAvg,max:safeMax};
+      } else {
+        localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
+        return;
+      }
+    }
+
+    // Fallback: legacy single-value format
     if(!parsed?.found||!parsed.avg||parsed.avg<500||parsed.avg>20000){
-      // avg must be a realistic cardamom price: ₹500–₹20,000/kg
       localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
       return;
     }
-    // Sanity-check max — if it's larger than 3× avg it's probably a quantity, not a price
-    if(parsed.max>parsed.avg*3||parsed.max>20000){
-      parsed.max=parsed.avg; // fall back to avg
-    }
+    if(parsed.max>parsed.avg*3||parsed.max>20000)parsed.max=parsed.avg;
 
     // Reject if older than 7 days
     if(parsed.date){
