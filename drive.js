@@ -431,7 +431,7 @@ async function triggerSync(manual=false){
       // ── FIRST-TIME SYNC FOR THIS DEVICE ──────────────────────────────────────
       // If local db has no records (fresh device / new user), Drive is full SOR —
       // replace local completely. Don't merge empty local onto Drive.
-      const localIsEmpty=!db.yields.length&&!db.expenses.length&&!db.incomes.length&&!db.sections.length&&!(db.workers||[]).length;
+      const localIsEmpty=!db.yields.length&&!db.expenses.length&&!db.incomes.length&&!db.sections.length&&!(db.workers||[]).length&&!(db.workerRates||[]).length&&!(db.buyers||[]).length;
       if(localIsEmpty){
         db={...cloud,
           // Preserve device-local config
@@ -440,7 +440,8 @@ async function triggerSync(manual=false){
           priceUpdatedAt:cloud.priceUpdatedAt
         };
       } else {
-        db=mergeDb(db,cloud);
+        // mergeDb(cloud, local) — local is second arg so local wins ties
+        db=mergeDb(cloud,db);
       }
       saveLocal();
       const enc=await encrypt(db,normPP(cfg.passphrase));
@@ -604,7 +605,7 @@ async function startupSync(){
       // Drive-as-SOR: find conflicts between local changes since last sync and cloud
       const lastSync=cfg.lastSyncTs||0;
       // If this device has never synced or has no records — Drive wins completely
-      const localIsEmpty=!db.yields.length&&!db.expenses.length&&!db.incomes.length&&!db.sections.length&&!(db.workers||[]).length;
+      const localIsEmpty=!db.yields.length&&!db.expenses.length&&!db.incomes.length&&!db.sections.length&&!(db.workers||[]).length&&!(db.workerRates||[]).length&&!(db.buyers||[]).length;
       if(localIsEmpty||!lastSync){
         db={...cloud};
         saveLocal();

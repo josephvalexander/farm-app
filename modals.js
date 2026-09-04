@@ -298,7 +298,7 @@ function saveWorkerRate(){
   if(todayIdx>=0){
     db.workerRates[todayIdx]={...db.workerRates[todayIdx],male,female,bengali,updatedAt:Date.now()};
   } else {
-    db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now()});
+    db.workerRates.push({id:uid(),effectiveFrom:today,male,female,bengali,createdAt:Date.now(),updatedAt:Date.now()});
   }
   saveLocal();closeModal();render();showToast('Rates updated from '+today);autoSync();
 }
