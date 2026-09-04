@@ -42,13 +42,15 @@ function waitForGoogle(){
   });
 }
 
-async function getOAuthToken(){
-  // 1. In-memory (fastest — same JS session)
+async function getOAuthToken(requireUserGesture=false){
+  // 1. In-memory (fastest)
   if(S.oauthToken)return S.oauthToken;
-  // 2. sessionStorage (survives refresh, same tab, up to 55 min)
+  // 2. sessionStorage (survives refresh)
   const cached=loadCachedToken();
   if(cached){S.oauthToken=cached;return cached;}
-  // 3. Wait for Google API to load (handles slow iOS load), then request token
+  // 3. If no token and not triggered by user action — don't show popup
+  if(!requireUserGesture)throw new Error('no_token');
+  // 4. User-initiated: show Google token picker
   await waitForGoogle();
   return new Promise((res,rej)=>{
     const hint=cfg.googleAccountHint||'';
@@ -59,17 +61,18 @@ async function getOAuthToken(){
       callback:(r)=>{
         if(r.error){rej(new Error(r.error));return;}
         S.oauthToken=r.access_token;
-        saveTokenToSession(r.access_token); // persist across refreshes
-        // Store account hint on first auth
+        saveTokenToSession(r.access_token);
         if(!cfg.googleAccountHint){
           fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${r.access_token}`)
             .then(x=>x.json()).then(d=>{if(d.email){cfg.googleAccountHint=d.email;saveCfg();}})
             .catch(()=>{});
         }
         res(r.access_token);
-      }
+      },
+      error_callback:(e)=>{rej(new Error(e?.type||'auth_error'));}
     });
-    client.requestAccessToken(hint?{}:{prompt:'select_account'});
+    // Always use prompt:'select_account' on mobile to ensure button tap triggers visible UI
+    client.requestAccessToken({prompt:hint?'':'select_account'});
   });
 }
 
@@ -143,7 +146,7 @@ function disconnectGoogle(){
   showToast('Disconnected — next sync will ask for account');
 }
 async function driveFetch(path,opts={}){
-  const tok=await getOAuthToken();
+  const tok=await getOAuthToken(false); // never auto-popup from API calls
   return fetch('https://www.googleapis.com/'+path,{...opts,headers:{Authorization:'Bearer '+tok,...(opts.headers||{})}});
 }
 // Drive search params — includeItemsFromAllDrives is required for shared files
@@ -263,17 +266,17 @@ async function cleanupDrive(){
 }
 
 async function rotateBackups(currentRaw){
-  // Rotate: bak2→bak3, bak1→bak2, current→bak1
+  if(!currentRaw||currentRaw.length<10)return;
   try{
     const [f1,f2,f3]=await Promise.all(BACKUP_FILES.map(n=>findNamedFile(n)));
     // bak2 → bak3
-    if(f2){const c=await readFile(f2.id);if(f3)await writeFile(f3.id,c);else await writeNamedFile(null,BACKUP_FILES[2],c);}
+    if(f2)try{const c=await readFile(f2.id);if(f3)await writeFile(f3.id,c);else await writeNamedFile(null,BACKUP_FILES[2],c);}catch(e){}
     // bak1 → bak2
-    if(f1){const c=await readFile(f1.id);if(f2)await writeFile(f2.id,c);else await writeNamedFile(null,BACKUP_FILES[1],c);}
+    if(f1)try{const c=await readFile(f1.id);if(f2)await writeFile(f2.id,c);else await writeNamedFile(null,BACKUP_FILES[1],c);}catch(e){}
     // current → bak1
-    if(f1)await writeFile(f1.id,currentRaw);
-    else await writeNamedFile(null,BACKUP_FILES[0],currentRaw);
-  }catch(e){console.warn('Backup rotation failed (non-fatal):',e);}
+    if(f1)try{await writeFile(f1.id,currentRaw);}catch(e){}
+    else try{await writeNamedFile(null,BACKUP_FILES[0],currentRaw);}catch(e){}
+  }catch(e){} // backup is non-critical
 }
 
 async function writeNamedFile(id,name,content){
@@ -294,12 +297,13 @@ let _pendingAutoSync=false;
 function autoSync(){
   if(_syncInFlight){_pendingAutoSync=true;return;}
   if(!navigator.onLine){S.pendingSync=true;return;}
-  triggerSync(true); // treat as manual so no rate-limit
+  if(!S.oauthToken&&!loadCachedToken()){return;} // never auto-popup
+  triggerSync(false); // auto — no rate-limit bypass needed since we skip debounce
 }
 
 async function triggerSync(manual=false){
   if(_syncInFlight){if(manual)_pendingAutoSync=true;return;}
-  if(!manual&&Date.now()-_lastSyncAttempt<60000){return;}
+  if(!manual&&!_pendingAutoSync&&Date.now()-_lastSyncAttempt<60000){return;}
   if(!navigator.onLine){setSyncUI('offline');S.pendingSync=true;return;}
   if(!cfg.passphrase){if(manual)showPassphraseSetup();return;}
   if(!getClientId()||getClientId()===CID_PH){if(manual)showClientIdSetup();return;}
@@ -312,7 +316,7 @@ async function triggerSync(manual=false){
     if(S.syncing){_syncInFlight=false;S.syncing=false;setSyncUI('err');setTimeout(()=>setSyncUI('idle'),4000);}
   },35000);
   try{
-    await getOAuthToken();
+    await getOAuthToken(manual); // only show popup when user explicitly tapped Sync
 
     // ── FIND FILE ─────────────────────────────────────────────────────────────
     // Key insight: Drive search has eventual consistency — newly created files
@@ -577,7 +581,7 @@ window.addEventListener('load',()=>{
 // ── STARTUP SYNC (Drive as SOR) ──────────────────────────────────────────────
 async function startupSync(){
   try{
-    await getOAuthToken();
+    await getOAuthToken(false); // silent — no popup during startup
     let file=null;
     if(cfg.driveFileId){
       try{
@@ -833,7 +837,7 @@ async function doGoogleSignIn(){
   const authTimeout=setTimeout(()=>hideAuthScreen(),15000);
   try{
     await waitForGoogle();
-    await getOAuthToken();
+    await getOAuthToken(true); // user-initiated
     showAuthScreen('loading');
     await startupSync();
   }catch(e){
