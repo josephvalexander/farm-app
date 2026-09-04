@@ -243,23 +243,35 @@ async function fetchCardamomPrice(force=false){
   const todayIST=new Date(Date.now()+5.5*3600000);
   const todayStr=todayIST.toISOString().slice(0,10);
 
-  // Use web_search tool — more reliable than grounding for structured data extraction
-  const prompt=`Search the web for "cardamom auction price today site:cardamom.farm" OR "cardamom.farm price ${todayStr}".
+  const prompt=`Search cardamom.farm for today's (${todayStr}) cardamom auction results.
 
-Find the latest small cardamom e-auction average price in Kerala, India from cardamom.farm.
-The site shows daily auction results with average price in ₹/kg and date.
+cardamom.farm shows multiple auction entries per day. Each entry looks like:
+  04-Sep-2026
+  ₹2,516  ← this is the AVERAGE PRICE per kg (use for weighted avg)
+  Auctioneer name, Location
+  Max price ₹3,513 · 76,378 kg quantity sold  ← quantity in kg, use as weight
 
-Return ONLY this JSON (no markdown, no explanation):
-{"date":"YYYY-MM-DD","avg":NUMBER,"max":NUMBER,"found":true}
+STEPS:
+1. Find all auction entries for the most recent date on cardamom.farm
+2. For each entry note: avg_price (₹/kg) and qty_sold (kg)
+3. Weighted average = sum(avg_price × qty_sold) / sum(qty_sold), round to integer
+4. Highest max price = maximum of all "Max price" values across entries
 
-Use found:false if no recent price found. avg and max must be plain integers like 3055.`;
+CRITICAL: "quantity sold" is kg sold — NOT a price. Do not use it as a price.
+Example: avg=2516, qty=76378 and avg=2354, qty=85161
+Weighted avg = (2516×76378 + 2354×85161)/(76378+85161) = 2427
+
+Return ONLY valid JSON, no markdown, no explanation:
+{"date":"YYYY-MM-DD","avg":INTEGER,"max":INTEGER,"found":true}
+
+If no data found: {"date":"","avg":0,"max":0,"found":false}`;
 
   try{
     // Try with web search tool first
     const makeBody=(tool)=>JSON.stringify({
       contents:[{parts:[{text:prompt}]}],
       ...(tool?{tools:[{google_search:{}}]}:{}),
-      generationConfig:{temperature:0,maxOutputTokens:150}
+      generationConfig:{temperature:0,maxOutputTokens:300}
     });
 
     let res=await fetch(
@@ -304,9 +316,14 @@ Use found:false if no recent price found. avg and max must be plain integers lik
       if(avgM&&dateM){parsed={found:true,date:dateM[1],avg:parseInt(avgM[1]),max:maxM?parseInt(maxM[1]):parseInt(avgM[1])};}
     }
 
-    if(!parsed?.found||!parsed.avg||parsed.avg<500||parsed.avg>200000){
+    if(!parsed?.found||!parsed.avg||parsed.avg<500||parsed.avg>20000){
+      // avg must be a realistic cardamom price: ₹500–₹20,000/kg
       localStorage.setItem(PRICE_FETCH_KEY,Date.now().toString());
       return;
+    }
+    // Sanity-check max — if it's larger than 3× avg it's probably a quantity, not a price
+    if(parsed.max>parsed.avg*3||parsed.max>20000){
+      parsed.max=parsed.avg; // fall back to avg
     }
 
     // Reject if older than 7 days
